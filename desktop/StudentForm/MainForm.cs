@@ -150,7 +150,7 @@ public sealed class MainForm : Form
         header.Controls.Add(headerStatus);
         header.Controls.Add(title);
 
-        Button discoverButton = IconButton("Tìm giáo viên", "search", 130);
+        Button discoverButton = IconButton("Tìm trong LAN", "search", 130);
         discoverButton.Click += async (_, _) => await DiscoverTeacherAsync();
         Button connectButton = IconButton("Kết nối", "log-in", 110);
         connectButton.Click += async (_, _) => await ConnectAsync();
@@ -385,17 +385,26 @@ public sealed class MainForm : Form
 
         _manualDisconnectRequested = false;
         CancelReconnectLoop();
-        (string host, int port, PolicySnapshot? lookupPolicy, bool useRelay, string relaySecret) = await ResolveTeacherEndpointAsync();
-        await ConnectToResolvedEndpointAsync(host, port, lookupPolicy, useRelay, relaySecret);
+        try
+        {
+            Log("Đang tra cứu phiên thi qua máy chủ...");
+            (string host, int port, PolicySnapshot? lookupPolicy, bool useRelay, string relaySecret) = await ResolveTeacherEndpointAsync();
+            await ConnectToResolvedEndpointAsync(host, port, lookupPolicy, useRelay, relaySecret);
+        }
+        catch (Exception ex)
+        {
+            Log($"Không kết nối được: {ex.Message}");
+            SetConnectionStatus("Chưa kết nối");
+        }
     }
 
     private async Task DiscoverTeacherAsync()
     {
-        Log("Đang tìm máy giáo viên trong mạng LAN...");
+        Log("Đang tìm máy giáo viên trong mạng LAN (chỉ dùng khi cùng Wi-Fi/LAN)...");
         DiscoveryAnnouncement? announcement = await TeacherDiscoveryClient.DiscoverAsync(_sessionIdText.Text.Trim(), TimeSpan.FromSeconds(5));
         if (announcement is null)
         {
-            Log("Không tìm thấy máy giáo viên trong LAN. Khi thi từ xa, bấm Kết nối để tra cứu qua máy chủ.");
+            Log("Không tìm thấy máy giáo viên trong LAN. Nếu thi từ xa/khác Wi-Fi, bấm Kết nối để tra cứu qua máy chủ relay.");
             return;
         }
 
@@ -935,6 +944,60 @@ public sealed class MainForm : Form
         string sessionCode = _sessionIdText.Text.Trim();
         string sessionToken = _tokenText.Text.Trim();
 
+        Exception? backendLookupError = null;
+        try
+        {
+            JoinSessionLookupDto? lookup = await _sessionLookupClient.LookupAsync(AppRuntime.BackendBaseUrl, sessionCode, sessionToken);
+            if (lookup is not null)
+            {
+                if (string.Equals(lookup.ConnectionMode, "remote", StringComparison.OrdinalIgnoreCase) && !lookup.RemoteJoinEnabled)
+                {
+                    throw new InvalidOperationException("Giáo viên chưa bật cho phép kết nối từ xa cho phiên này.");
+                }
+
+                bool relayMode = string.Equals(lookup.ConnectionMode, "relay", StringComparison.OrdinalIgnoreCase) || lookup.RelayEnabled;
+                if (relayMode)
+                {
+                    if (string.IsNullOrWhiteSpace(lookup.RelayHost) || lookup.RelayPort is null or <= 0)
+                    {
+                        throw new InvalidOperationException("Phiên thi đã chọn relay nhưng máy chủ chưa có thông tin relay. Hãy nhấn Bắt đầu phiên trên máy giáo viên.");
+                    }
+
+                    _serverText.Text = lookup.RelayHost;
+                    _portInput.Value = Math.Clamp(lookup.RelayPort.Value, (int)_portInput.Minimum, (int)_portInput.Maximum);
+                    _sessionSummaryLabel.Text = $"Phiên {lookup.SessionCode}";
+                    Log("Đã nhận thông tin máy chủ relay. Đang kết nối qua máy chủ, không cần cùng Wi-Fi/LAN.");
+                    return (lookup.RelayHost, lookup.RelayPort.Value, BuildPolicyFromLookup(lookup), true, lookup.RelaySecret ?? "");
+                }
+
+                if (string.IsNullOrWhiteSpace(lookup.Host) || lookup.Port is null or <= 0)
+                {
+                    throw new InvalidOperationException("Phiên thi chưa công bố điểm kết nối từ giáo viên.");
+                }
+
+                if (string.Equals(lookup.ConnectionMode, "remote", StringComparison.OrdinalIgnoreCase) &&
+                    LooksLikePrivateHost(lookup.Host))
+                {
+                    Log($"Điểm kết nối từ xa hiện là IP nội bộ {lookup.Host}. Sinh viên khác mạng sẽ không vào được nếu giáo viên chưa publish IP/domain public.");
+                }
+
+                _serverText.Text = lookup.Host;
+                _portInput.Value = Math.Clamp(lookup.Port.Value, (int)_portInput.Minimum, (int)_portInput.Maximum);
+                _sessionSummaryLabel.Text = $"Phiên {lookup.SessionCode}";
+                Log("Đã nhận điểm kết nối từ máy chủ.");
+                return (lookup.Host, lookup.Port.Value, BuildPolicyFromLookup(lookup), false, "");
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            backendLookupError = ex;
+            Log($"Chưa tra cứu được phiên qua máy chủ: {ex.Message}. Sẽ thử tìm trong LAN nếu cùng mạng.");
+        }
+
         DiscoveryAnnouncement? announcement = await TeacherDiscoveryClient.DiscoverAsync(sessionCode, TimeSpan.FromSeconds(2));
         if (announcement is not null)
         {
@@ -944,48 +1007,12 @@ public sealed class MainForm : Form
             return (announcement.Host, announcement.Port, null, false, "");
         }
 
-        JoinSessionLookupDto? lookup = await _sessionLookupClient.LookupAsync(AppRuntime.BackendBaseUrl, sessionCode, sessionToken);
-        if (lookup is null)
+        if (backendLookupError is not null)
         {
-            throw new InvalidOperationException("Không tìm được thông tin phiên thi.");
+            throw new InvalidOperationException("Không tìm thấy giáo viên trong LAN và chưa tra cứu được phiên qua máy chủ. Kiểm tra backend/VPS hoặc kết nối mạng.", backendLookupError);
         }
 
-        if (string.Equals(lookup.ConnectionMode, "remote", StringComparison.OrdinalIgnoreCase) && !lookup.RemoteJoinEnabled)
-        {
-            throw new InvalidOperationException("Giáo viên chưa bật cho phép kết nối từ xa cho phiên này.");
-        }
-
-        bool relayMode = string.Equals(lookup.ConnectionMode, "relay", StringComparison.OrdinalIgnoreCase) || lookup.RelayEnabled;
-        if (relayMode)
-        {
-            if (string.IsNullOrWhiteSpace(lookup.RelayHost) || lookup.RelayPort is null or <= 0)
-            {
-                throw new InvalidOperationException("Phiên thi chưa có thông tin máy chủ relay.");
-            }
-
-            _serverText.Text = lookup.RelayHost;
-            _portInput.Value = Math.Clamp(lookup.RelayPort.Value, (int)_portInput.Minimum, (int)_portInput.Maximum);
-            _sessionSummaryLabel.Text = $"Phiên {lookup.SessionCode}";
-            Log($"Đã nhận máy chủ relay từ backend: {lookup.RelayHost}:{lookup.RelayPort}.");
-            return (lookup.RelayHost, lookup.RelayPort.Value, BuildPolicyFromLookup(lookup), true, lookup.RelaySecret ?? "");
-        }
-
-        if (string.IsNullOrWhiteSpace(lookup.Host) || lookup.Port is null or <= 0)
-        {
-            throw new InvalidOperationException("Phiên thi chưa công bố điểm kết nối từ giáo viên.");
-        }
-
-        if (string.Equals(lookup.ConnectionMode, "remote", StringComparison.OrdinalIgnoreCase) &&
-            LooksLikePrivateHost(lookup.Host))
-        {
-            Log($"Điểm kết nối từ xa hiện là IP nội bộ {lookup.Host}. Sinh viên khác mạng sẽ không vào được nếu giáo viên chưa publish IP/domain public.");
-        }
-
-        _serverText.Text = lookup.Host;
-        _portInput.Value = Math.Clamp(lookup.Port.Value, (int)_portInput.Minimum, (int)_portInput.Maximum);
-        _sessionSummaryLabel.Text = $"Phiên {lookup.SessionCode}";
-        Log($"Đã nhận điểm kết nối từ máy chủ: {lookup.Host}:{lookup.Port}.");
-        return (lookup.Host, lookup.Port.Value, BuildPolicyFromLookup(lookup), false, "");
+        throw new InvalidOperationException("Không tìm được thông tin phiên thi trên máy chủ và không tìm thấy giáo viên trong LAN.");
     }
 
     private static PolicySnapshot BuildPolicyFromLookup(JoinSessionLookupDto lookup)

@@ -2,10 +2,12 @@ namespace StudentForm;
 
 internal static class AppRuntime
 {
+    private const string DefaultBackendBaseUrl = "http://103.180.138.225:8081";
+
     public static string BackendBaseUrl =>
         Environment.GetEnvironmentVariable("EXAMGUARD_BACKEND_URL")
         ?? ReadOptionalFile("student-backend-url.txt")
-        ?? "http://127.0.0.1:8081";
+        ?? DefaultBackendBaseUrl;
 
     private static string? ReadOptionalFile(string fileName)
     {

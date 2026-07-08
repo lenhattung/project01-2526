@@ -6,12 +6,14 @@ use app\models\BlockedApp;
 use app\models\ExamSession;
 use Yii;
 use yii\filters\Cors;
+use yii\rest\Controller;
 use yii\web\BadRequestHttpException;
-use yii\web\Controller;
 use yii\web\NotFoundHttpException;
 
 class SessionAccessController extends Controller
 {
+    public $enableCsrfValidation = false;
+
     public function behaviors(): array
     {
         $behaviors = parent::behaviors();
