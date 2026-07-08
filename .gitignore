@@ -1,0 +1,14 @@
+bin/
+obj/
+vendor/
+runtime/
+web/assets/
+.env
+backend/config/local.php
+*.user
+*.suo
+*.zip
+Submissions/
+Exports/
+artifacts/
+docs

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Security Audit"
+  short_description: "ExamGuard security review workflow"
+  default_prompt: "Use $security-audit to review ExamGuard backend, desktop, and deployment changes for security risk."

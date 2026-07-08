@@ -1,0 +1,4 @@
+interface:
+  display_name: "Yii2 Backend Database"
+  short_description: "ExamGuard Yii2 API and schema"
+  default_prompt: "Use -backend-database to design or implement ExamGuard backend APIs, schema, and secure business workflows."

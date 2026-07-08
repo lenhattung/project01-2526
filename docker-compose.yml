@@ -1,0 +1,87 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: examguard-mysql
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --max-connections=250
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-examguard}
+      MYSQL_USER: ${MYSQL_USER:-examguard}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-examguard_secret}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_secret}
+    ports:
+      - "${MYSQL_PUBLISHED_PORT:-127.0.0.1:3307}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - examguard_internal
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: examguard-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_DSN: ${DB_DSN:-mysql:host=mysql;dbname=examguard;charset=utf8mb4}
+      DB_USERNAME: ${DB_USERNAME:-examguard}
+      DB_PASSWORD: ${DB_PASSWORD:-examguard_secret}
+      COOKIE_VALIDATION_KEY: ${COOKIE_VALIDATION_KEY:-change-this-production-key}
+    ports:
+      - "${BACKEND_PUBLISHED_PORT:-8081}:80"
+    networks:
+      - examguard_internal
+    healthcheck:
+      test: ["CMD-SHELL", "php -r \"exit(@file_get_contents('http://127.0.0.1/api/health') === false ? 1 : 0);\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: ./backend
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_DSN: ${DB_DSN:-mysql:host=mysql;dbname=examguard;charset=utf8mb4}
+      DB_USERNAME: ${DB_USERNAME:-examguard}
+      DB_PASSWORD: ${DB_PASSWORD:-examguard_secret}
+      COOKIE_VALIDATION_KEY: ${COOKIE_VALIDATION_KEY:-change-this-production-key}
+    command: php yii migrate --interactive=0
+    networks:
+      - examguard_internal
+    profiles:
+      - tools
+
+  relay:
+    build:
+      context: .
+      dockerfile: services/ExamGuard.Relay/Dockerfile
+    container_name: examguard-relay
+    restart: unless-stopped
+    environment:
+      RELAY_PORT: ${RELAY_PORT:-9090}
+      RELAY_SHARED_SECRET: ${RELAY_SHARED_SECRET:-change-this-relay-secret}
+      RELAY_MAX_PAYLOAD_BYTES: ${RELAY_MAX_PAYLOAD_BYTES:-52428800}
+    ports:
+      - "${RELAY_PUBLISHED_PORT:-9090}:9090"
+    networks:
+      - examguard_internal
+
+volumes:
+  mysql_data:
+
+networks:
+  examguard_internal:
+    driver: bridge

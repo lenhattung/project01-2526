@@ -1,0 +1,4 @@
+interface:
+  display_name: "WinForms UI UX"
+  short_description: "Polished ExamGuard WinForms UI"
+  default_prompt: "Use -ui-ux to improve TeacherForm or StudentForm layout, theme, and usability."

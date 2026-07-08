@@ -1,0 +1,13 @@
+.git
+.vs
+.idea
+artifacts
+backend/vendor
+backend/runtime/*
+backend/web/assets/*
+desktop/**/bin
+desktop/**/obj
+services/**/bin
+services/**/obj
+**/.DS_Store
+**/Thumbs.db

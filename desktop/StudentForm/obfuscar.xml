@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Obfuscator>
+  <Var name="InPath" value="bin\Release\net8.0-windows\publish" />
+  <Var name="OutPath" value="bin\Release\net8.0-windows\publish-obfuscated" />
+  <Var name="KeepPublicApi" value="false" />
+  <Var name="HidePrivateApi" value="true" />
+  <Var name="ReuseNames" value="true" />
+  <Var name="RenameEvents" value="true" />
+  <Var name="RenameFields" value="true" />
+  <Var name="RegenerateDebugInfo" value="false" />
+
+  <Module file="$(InPath)\StudentForm.dll">
+    <SkipType name="StudentForm.Program" />
+  </Module>
+</Obfuscator>

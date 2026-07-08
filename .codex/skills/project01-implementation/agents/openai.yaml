@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project01 Implementation"
+  short_description: "ExamGuard repo build workflow"
+  default_prompt: "Use -implementation to extend or review the ExamGuard repository safely."

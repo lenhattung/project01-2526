@@ -1,0 +1,14 @@
+<?php
+
+return [
+    'db' => [
+        'dsn' => 'mysql:host=localhost;dbname=;charset=utf8mb4',
+        'username' => '',
+        'password' => 'replace-with-hostinger-db-password',
+        'charset' => 'utf8mb4',
+    ],
+    'app' => [
+        'cookieValidationKey' => 'replace-with-a-long-random-production-key',
+        'baseUrl' => '',
+    ],
+];

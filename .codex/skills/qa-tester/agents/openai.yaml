@@ -1,0 +1,4 @@
+interface:
+  display_name: "QA Tester"
+  short_description: "ExamGuard test and defect workflow"
+  default_prompt: "Use $qa-tester to verify ExamGuard changes, reproduce bugs, and summarize release readiness."
