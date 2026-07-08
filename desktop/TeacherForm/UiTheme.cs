@@ -98,11 +98,12 @@ internal static class UiTheme
     {
         bool isLargeAction = string.Equals(button.Name, "large-action-button", StringComparison.OrdinalIgnoreCase);
         bool isSidebar = string.Equals(button.Name, "sidebar-button", StringComparison.OrdinalIgnoreCase);
+        bool isSecondary = string.Equals(button.Name, "secondary-button", StringComparison.OrdinalIgnoreCase);
 
         button.FlatStyle = FlatStyle.Flat;
         button.FlatAppearance.BorderColor = Border;
         button.FlatAppearance.BorderSize = 1;
-        button.BackColor = IsPrimaryButton(button.Text) ? Accent : Surface;
+        button.BackColor = isLargeAction || isSecondary ? Surface : (IsPrimaryButton(button.Text) ? Accent : Surface);
         button.ForeColor = button.BackColor == Accent ? Color.White : Text;
         button.Height = isLargeAction ? 56 : (isSidebar ? 52 : 36);
         button.Padding = isLargeAction ? new Padding(18, 8, 14, 8) : new Padding(10, 5, 10, 5);

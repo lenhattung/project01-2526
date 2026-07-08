@@ -14,7 +14,7 @@ internal static class AppIcons
         bool isLargeAction = string.Equals(button.Name, "large-action-button", StringComparison.OrdinalIgnoreCase);
         bool isSidebar = string.Equals(button.Name, "sidebar-button", StringComparison.OrdinalIgnoreCase);
         Color iconColor = button.ForeColor.ToArgb() == Color.White.ToArgb() ? Color.White : Accent;
-        button.Image = GetIcon(iconName, iconColor, isLargeAction ? 22 : 18);
+        button.Image = GetIcon(iconName, iconColor, isLargeAction ? 28 : 18);
         button.ImageAlign = ContentAlignment.MiddleLeft;
         button.TextAlign = isLargeAction || isSidebar ? ContentAlignment.MiddleLeft : ContentAlignment.MiddleCenter;
         button.TextImageRelation = TextImageRelation.ImageBeforeText;

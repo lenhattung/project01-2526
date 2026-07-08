@@ -621,6 +621,7 @@ public sealed class MainForm : Form
         layout.Controls.Add(WrapCard("Màn hình đang chọn", screenPanel, "monitor"), 0, 0);
         layout.Controls.Add(WrapCard("Webcam đang chọn", webcamPanel, "video"), 0, 1);
         Button chatPopupButton = IconButton("Mở chat", "message-circle", 130);
+        chatPopupButton.Name = "secondary-button";
         chatPopupButton.Dock = DockStyle.Fill;
         chatPopupButton.Click += (_, _) => ShowChatPopup();
 
