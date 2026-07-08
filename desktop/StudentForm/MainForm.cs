@@ -216,7 +216,7 @@ public sealed class MainForm : Form
         chatLabel.Margin = new Padding(6, 10, 4, 4);
         _chatText.Dock = DockStyle.Fill;
         _chatText.Height = 70;
-        FlowLayoutPanel chatRow = CreateButtonRow(_handRaiseButton, chatButton);
+        FlowLayoutPanel chatRow = CreateButtonRow(chatButton, _handRaiseButton);
         Label chatHistoryLabel = LabelFor("Lịch sử chat");
         chatHistoryLabel.Margin = new Padding(6, 10, 4, 4);
         _chatHistoryText.Dock = DockStyle.Fill;
