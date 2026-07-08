@@ -447,9 +447,9 @@ internal sealed class TeacherSocketServer : ITeacherSessionTransport
 
                 frame.Envelope.Metadata.TryGetValue("message", out string? helpMessage);
                 client.State.HandRaised = true;
-                client.State.LastActivityEvent = "Dơ tay";
+                client.State.LastActivityEvent = "Giơ tay";
                 _studentChanged(client.State);
-                _log($"{client.State.DisplayName} đã dơ tay xin hỗ trợ.");
+                _log($"{client.State.DisplayName} đã giơ tay xin hỗ trợ.");
                 _handRaised?.Invoke(client.State, helpMessage ?? "");
                 break;
             case MessageType.HandRaiseClear:
@@ -457,7 +457,7 @@ internal sealed class TeacherSocketServer : ITeacherSessionTransport
                 client.State.LastActivityEvent = "Hạ tay";
                 _studentChanged(client.State);
                 _activityReceived?.Invoke(client.State, "hand_raise_cleared", frame.Envelope.Metadata);
-                _log($"{client.State.DisplayName} đã tắt dơ tay.");
+                _log($"{client.State.DisplayName} đã tắt giơ tay.");
                 break;
             case MessageType.SubmissionStart:
                 await HandleSubmissionStartAsync(client, frame);

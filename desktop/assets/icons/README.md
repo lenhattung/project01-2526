@@ -14,7 +14,7 @@ Các nhóm icon nên có:
 - kết nối / ngắt kết nối
 - nộp bài
 - chat
-- dơ tay
+- giơ tay
 - cảnh báo
 - khóa / mở khóa
 - phóng to / đóng

@@ -14,7 +14,6 @@ public sealed class MainForm : Form
     private readonly TextBox _relayHostText = new() { Text = "103.180.138.225", Width = 180 };
     private readonly NumericUpDown _relayPortInput = new() { Minimum = 1024, Maximum = 65535, Value = 9090, Width = 90 };
     private readonly TextBox _relaySecretText = new() { Text = "Da39qVAylFO0Gl4kVxMHm1CWz7JB9z_VUUl2wBMjCudY1or4i-Oyofmb_c1gyGgV", Width = 220, UseSystemPasswordChar = true };
-    private readonly CheckBox _remoteJoinEnabledCheck = new() { Text = "Cho phép kết nối từ xa", AutoSize = true };
 
     private readonly NumericUpDown _screenIntervalInput = new() { Minimum = 250, Maximum = 10000, Value = 2000, Width = 90 };
     private readonly NumericUpDown _screenQualityInput = new() { Minimum = 20, Maximum = 85, Value = 40, Width = 80 };
@@ -93,8 +92,7 @@ public sealed class MainForm : Form
         AppIcons.SetFormIcon(this, "shield");
 
         _discoveryBroadcaster = new TeacherDiscoveryBroadcaster(message => BeginInvoke(() => Log(message)));
-        _connectionModePicker.Items.AddRange(["Cùng mạng LAN", "Khác mạng / từ xa"]);
-        _connectionModePicker.Items.Add("Qua máy chủ relay");
+        _connectionModePicker.Items.AddRange(["Cùng mạng LAN", "Qua máy chủ relay"]);
         _connectionModePicker.SelectedIndex = 0;
         _sessionIdText.TextChanged += (_, _) => _sessionQuickLabel.Text = $"Phiên: {_sessionIdText.Text.Trim()}";
         _connectionModePicker.SelectedIndexChanged += (_, _) => HandleConnectionModeChanged();
@@ -454,7 +452,7 @@ public sealed class MainForm : Form
         stack.Controls.Add(CreateAccordionSection("session", "Phiên thi và kết nối", "play-circle", BuildSessionGroup(), "Mã phiên, bảo vệ, cổng"), 0, 0);
         stack.Controls.Add(CreateAccordionSection("policy", "Giám sát và quy định", "shield", BuildPolicyGroup(), "Màn hình, webcam, chặn truy cập"), 0, 1);
         stack.Controls.Add(CreateAccordionSection("backend", "Máy chủ dữ liệu", "server", BuildBackendGroup(), "Đăng nhập, phiên, báo cáo"), 0, 2);
-        stack.Controls.Add(CreateAccordionSection("control", "Điều khiển và cảnh báo", "bell", BuildControlGroup(), "Tin nhắn, dơ tay, khóa, lệnh"), 0, 3);
+        stack.Controls.Add(CreateAccordionSection("control", "Điều khiển và cảnh báo", "bell", BuildControlGroup(), "Tin nhắn, giơ tay, khóa, lệnh"), 0, 3);
         stack.Controls.Add(CreateAccordionSection("distribution", "Phân phối đề thi", "folder", BuildDistributionGroup(), "Phát tệp, thư mục, màn hình"), 0, 4);
 
         host.Controls.Add(stack);
@@ -585,7 +583,7 @@ public sealed class MainForm : Form
         chatButton.Click += async (_, _) => await SendChatAsync();
         Button chatAllButton = IconButton("Chat tất cả", "message-circle", 115);
         chatAllButton.Click += async (_, _) => await SendChatAllAsync();
-        Button clearHandButton = IconButton("Xóa dơ tay", "x-circle", 115);
+        Button clearHandButton = IconButton("Xóa giơ tay", "x-circle", 115);
         clearHandButton.Click += async (_, _) => await ClearHandRaiseAsync();
         Button attentionButton = IconButton("Gọi chú ý", "bell", 110);
         attentionButton.Click += async (_, _) => await SendAttentionAsync();
@@ -739,20 +737,9 @@ public sealed class MainForm : Form
         grid.Controls.Add(_portInput, 1, 2);
         grid.Controls.Add(LabelFor("Kiểu kết nối"), 0, 3);
         grid.Controls.Add(_connectionModePicker, 1, 3);
-        grid.Controls.Add(LabelFor("Host/IP từ xa"), 0, 4);
-        grid.Controls.Add(_publishedHostText, 1, 4);
-        grid.Controls.Add(LabelFor("Máy chủ relay"), 0, 5);
-        grid.Controls.Add(_relayHostText, 1, 5);
-        grid.Controls.Add(LabelFor("Cổng relay"), 0, 6);
-        grid.Controls.Add(_relayPortInput, 1, 6);
-        grid.Controls.Add(LabelFor("Mã relay"), 0, 7);
-        grid.Controls.Add(_relaySecretText, 1, 7);
-        grid.Controls.Add(_remoteJoinEnabledCheck, 0, 8);
-        grid.SetColumnSpan(_remoteJoinEnabledCheck, 2);
         FlowLayoutPanel actions = CreateButtonRow(startButton, stopButton);
-        grid.Controls.Add(actions, 0, 9);
+        grid.Controls.Add(actions, 0, 4);
         grid.SetColumnSpan(actions, 2);
-        RemoveGridRows(grid, 4, 5, 6, 7);
         box.Controls.Add(grid);
         return box;
     }
@@ -854,7 +841,7 @@ public sealed class MainForm : Form
         chatButton.Click += async (_, _) => await SendChatAsync();
         Button chatAllButton = IconButton("Chat tất cả", "message-circle", 115);
         chatAllButton.Click += async (_, _) => await SendChatAllAsync();
-        Button clearHandButton = IconButton("Xóa dơ tay", "x-circle", 115);
+        Button clearHandButton = IconButton("Xóa giơ tay", "x-circle", 115);
         clearHandButton.Click += async (_, _) => await ClearHandRaiseAsync();
         Button attentionButton = IconButton("Gọi chú ý", "bell", 110);
         attentionButton.Click += async (_, _) => await SendAttentionAsync();
@@ -992,6 +979,8 @@ public sealed class MainForm : Form
         label.Margin = new Padding(0, 1, 0, 0);
         panel.Controls.Add(AppIcons.Picture(iconName, 14));
         panel.Controls.Add(label);
+        label.TextChanged += (_, _) => UiTheme.StyleStatusChip(panel);
+        UiTheme.StyleStatusChip(panel);
         return panel;
     }
 
@@ -1009,6 +998,7 @@ public sealed class MainForm : Form
 
         SubmissionReceiver submissionReceiver = new(rootPath);
         string connectionMode = SelectedConnectionMode();
+        await EnsureBackendSessionRunningAsync(connectionMode);
         if (connectionMode == "relay")
         {
             TeacherRelayClient relay = new(
@@ -1057,6 +1047,32 @@ public sealed class MainForm : Form
         UpdateTargetScopeLabel();
         _sessionAccessRefreshTimer.Start();
         await PublishSessionAccessAsync();
+    }
+
+    private async Task EnsureBackendSessionRunningAsync(string desiredConnectionMode)
+    {
+        if (!_backendClient.IsAuthenticated || (int)_backendSessionIdInput.Value <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            ExamSessionSummaryDto? session = await _backendClient.StartExamSessionAsync(CurrentBackendSessionId());
+            if (session is null)
+            {
+                return;
+            }
+
+            ApplyBackendSessionSelection(session);
+            SelectConnectionMode(desiredConnectionMode);
+            _sessionStartedAtUtc = ParseUtcOrNull(session.StartedAtUtc);
+            Log($"Đã mở phiên {session.Code} trên máy chủ.");
+        }
+        catch (Exception ex)
+        {
+            Log($"Không mở được phiên trên máy chủ: {ex.Message}");
+        }
     }
 
     private async Task StopServerAsync()
@@ -1153,7 +1169,7 @@ public sealed class MainForm : Form
         await _server.SendHandRaiseClearAsync(SelectedStudentId());
         if (SelectedStudentId() is { } studentId && _cards.TryGetValue(studentId, out StudentCard? card))
         {
-            AppendChatHistory($"Đã xóa dơ tay của {card.DisplayName}.");
+            AppendChatHistory($"Đã xóa giơ tay của {card.DisplayName}.");
         }
     }
 
@@ -1491,7 +1507,7 @@ public sealed class MainForm : Form
     private async Task OnHandRaisedAsync(StudentState state, string message)
     {
         SystemSounds.Exclamation.Play();
-        BeginInvoke(() => AppendChatHistory($"{state.DisplayName} đã dơ tay{(string.IsNullOrWhiteSpace(message) ? "" : $": {message}")}"));
+        BeginInvoke(() => AppendChatHistory($"{state.DisplayName} đã giơ tay{(string.IsNullOrWhiteSpace(message) ? "" : $": {message}")}"));
         await PostEventAsync(state, "hand_raised", new { message });
     }
 
@@ -1563,7 +1579,6 @@ public sealed class MainForm : Form
         _blockClipboardCheck.Checked = policy.BlockClipboardShortcuts;
         _sessionStartedAtUtc = ParseUtcOrNull(policy.StartedAtUtc);
         SelectConnectionMode(policy.ConnectionMode);
-        _remoteJoinEnabledCheck.Checked = policy.RemoteJoinEnabled;
         _publishedHostText.Text = policy.PublishedHost ?? "";
         _relayHostText.Text = policy.RelayHost ?? _relayHostText.Text;
         if (policy.RelayPort is > 0)
@@ -1631,7 +1646,7 @@ public sealed class MainForm : Form
 
     private static string BuildActivityText(StudentState state)
     {
-        string hand = state.HandRaised ? "Dơ tay; " : "";
+        string hand = state.HandRaised ? "Giơ tay; " : "";
         string chat = state.UnreadChatCount > 0 ? $"Chat mới ({state.UnreadChatCount}); " : "";
         return $"{hand}{chat}{state.LastViolation}".Trim();
     }
@@ -1669,7 +1684,6 @@ public sealed class MainForm : Form
         _sessionTokenText.Text = session.SessionToken;
         _sessionStartedAtUtc = ParseUtcOrNull(session.StartedAtUtc);
         SelectConnectionMode(session.ConnectionMode);
-        _remoteJoinEnabledCheck.Checked = session.RemoteJoinEnabled;
         _publishedHostText.Text = session.PublishedHost ?? _publishedHostText.Text;
         _relayHostText.Text = session.RelayHost ?? _relayHostText.Text;
         if (session.RelayPort is > 0)
@@ -1744,7 +1758,7 @@ public sealed class MainForm : Form
     private void Log(string message)
     {
         _eventLog.Items.Insert(0, $"{DateTime.Now:HH:mm:ss} {message}");
-        if (message.Contains("dơ tay", StringComparison.OrdinalIgnoreCase)
+        if (message.Contains("giơ tay", StringComparison.OrdinalIgnoreCase)
             || message.Contains("mất kết nối", StringComparison.OrdinalIgnoreCase)
             || message.Contains("tin nhắn", StringComparison.OrdinalIgnoreCase)
             || message.Contains("vi phạm", StringComparison.OrdinalIgnoreCase))
@@ -1764,18 +1778,12 @@ public sealed class MainForm : Form
         {
             string connectionMode = SelectedConnectionMode();
             bool relayMode = connectionMode == "relay";
-            bool remoteJoinEnabled = _remoteJoinEnabledCheck.Checked || connectionMode == "remote" || relayMode;
+            bool remoteJoinEnabled = relayMode;
             string? publishedHost = ResolvePublishedHost(connectionMode);
             if (string.IsNullOrWhiteSpace(publishedHost))
             {
-                Log("Chế độ khác mạng yêu cầu nhập Host/IP public hoặc domain public của máy giáo viên đã mở cổng.");
+                Log("Chưa xác định được điểm kết nối. Hãy chọn cùng mạng LAN hoặc qua máy chủ relay.");
                 return;
-            }
-
-            if (string.Equals(connectionMode, "remote", StringComparison.OrdinalIgnoreCase) &&
-                LooksLikePrivateOrLoopbackHost(publishedHost))
-            {
-                Log($"Host/IP từ xa hiện là {publishedHost}. Đây là IP nội bộ hoặc localhost; sinh viên khác mạng sẽ không kết nối được.");
             }
 
             await _backendClient.PublishSessionAccessAsync(
@@ -1799,14 +1807,12 @@ public sealed class MainForm : Form
     private void HandleConnectionModeChanged()
     {
         string mode = SelectedConnectionMode();
-        bool remoteMode = mode == "remote";
         bool relayMode = mode == "relay";
-        _remoteJoinEnabledCheck.Checked = remoteMode || relayMode || _remoteJoinEnabledCheck.Checked;
         if (relayMode && string.IsNullOrWhiteSpace(_publishedHostText.Text))
         {
             _publishedHostText.Text = _relayHostText.Text.Trim();
         }
-        else if (!remoteMode && !relayMode && string.IsNullOrWhiteSpace(_publishedHostText.Text))
+        else if (!relayMode && string.IsNullOrWhiteSpace(_publishedHostText.Text))
         {
             _publishedHostText.Text = TeacherDiscoveryBroadcaster.GetLikelyLocalIp();
         }
@@ -1835,44 +1841,14 @@ public sealed class MainForm : Form
             return configured;
         }
 
-        if (string.Equals(connectionMode, "remote", StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
         return TeacherDiscoveryBroadcaster.GetLikelyLocalIp();
-    }
-
-    private static bool LooksLikePrivateOrLoopbackHost(string host)
-    {
-        if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        if (!System.Net.IPAddress.TryParse(host, out System.Net.IPAddress? ip))
-        {
-            return false;
-        }
-
-        byte[] bytes = ip.GetAddressBytes();
-        if (bytes.Length != 4)
-        {
-            return false;
-        }
-
-        return bytes[0] == 10
-            || bytes[0] == 127
-            || (bytes[0] == 192 && bytes[1] == 168)
-            || (bytes[0] == 172 && bytes[1] is >= 16 and <= 31);
     }
 
     private string SelectedConnectionMode()
     {
         return _connectionModePicker.SelectedIndex switch
         {
-            1 => "remote",
-            2 => "relay",
+            1 => "relay",
             _ => "lan"
         };
     }
@@ -1880,8 +1856,9 @@ public sealed class MainForm : Form
     private void SelectConnectionMode(string? mode)
     {
         _connectionModePicker.SelectedIndex = string.Equals(mode, "relay", StringComparison.OrdinalIgnoreCase)
-            ? 2
-            : (string.Equals(mode, "remote", StringComparison.OrdinalIgnoreCase) ? 1 : 0);
+            || string.Equals(mode, "remote", StringComparison.OrdinalIgnoreCase)
+                ? 1
+                : 0;
     }
 
     private string ComputeExamEndAtUtc()

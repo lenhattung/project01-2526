@@ -167,7 +167,7 @@ TeacherForm có thể:
 - Chặn copy/paste theo policy.
 - Chặn phần mềm/từ khóa website theo policy.
 - Chat với một sinh viên hoặc toàn bộ sinh viên.
-- Nhận dơ tay/cảnh báo mất kết nối.
+- Nhận giơ tay/cảnh báo mất kết nối.
 - Phát file/folder đề thi.
 - Nhận bài nộp dạng `.zip`.
 - Ghi event/submission/chat metadata xuống backend/MySQL.
@@ -189,10 +189,10 @@ Mã sinh viên
 Tên sinh viên
 ```
 
-Sau đó nhấn `Tìm giáo viên` hoặc `Kết nối`.
+Sau đó nhấn một trong hai nút:
 
-- Nếu cùng LAN, app có thể tìm Teacher qua discovery.
-- Nếu khác mạng Wi-Fi, app lookup backend và tự kết nối đến relay VPS.
+- `Tìm/Kết nối trong LAN` nếu cùng Wi-Fi/LAN.
+- `Tìm/Kết nối khác mạng` nếu khác mạng Wi-Fi; app lookup backend và tự kết nối đến relay VPS.
 - Student không cần nhập IP giáo viên, port giáo viên hoặc IP relay.
 
 ## Test Nhanh End-to-End

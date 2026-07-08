@@ -87,6 +87,6 @@ internal static class UiTheme
             || text.Contains("Tìm", StringComparison.OrdinalIgnoreCase)
             || text.Contains("Nộp", StringComparison.OrdinalIgnoreCase)
             || text.Contains("Gửi", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("Dơ tay", StringComparison.OrdinalIgnoreCase);
+            || text.Contains("Giơ tay", StringComparison.OrdinalIgnoreCase);
     }
 }

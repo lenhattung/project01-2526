@@ -62,6 +62,9 @@ public sealed class MainForm : Form
     private CancellationTokenSource? _reconnectCts;
     private string? _lastResolvedHost;
     private int _lastResolvedPort;
+    private string? _lastLanHost;
+    private int _lastLanPort;
+    private string? _lastLanSessionId;
     private int _reconnectLoopStarted;
     private bool _manualDisconnectRequested;
     private bool _isClosing;
@@ -150,17 +153,17 @@ public sealed class MainForm : Form
         header.Controls.Add(headerStatus);
         header.Controls.Add(title);
 
-        Button discoverButton = IconButton("Tìm trong LAN", "search", 130);
+        Button discoverButton = IconButton("Tìm/Kết nối trong LAN", "search", 185);
         discoverButton.Click += async (_, _) => await DiscoverTeacherAsync();
-        Button connectButton = IconButton("Kết nối", "log-in", 110);
-        connectButton.Click += async (_, _) => await ConnectAsync();
+        Button remoteSearchButton = IconButton("Tìm/Kết nối khác mạng", "wifi", 190);
+        remoteSearchButton.Click += async (_, _) => await ConnectRemoteAsync();
         Button disconnectButton = IconButton("Ngắt kết nối", "log-out", 130);
         disconnectButton.Click += async (_, _) => await DisconnectAsync();
         Button submitFileButton = IconButton("Nộp tệp", "upload-cloud", 110);
         submitFileButton.Click += async (_, _) => await SubmitFileAsync();
         Button submitFolderButton = IconButton("Nộp thư mục", "folder", 130);
         submitFolderButton.Click += async (_, _) => await SubmitFolderAsync();
-        _handRaiseButton = IconButton("Dơ tay", "help-circle", 120);
+        _handRaiseButton = IconButton("Giơ tay", "help-circle", 120);
         _handRaiseButton.Click += async (_, _) => await RaiseHandAsync();
         Button chatButton = IconButton("Gửi tin nhắn", "send", 125);
         chatButton.Click += async (_, _) => await SendChatAsync();
@@ -182,7 +185,7 @@ public sealed class MainForm : Form
         connectionGrid.Controls.Add(LabelFor("Tên user máy"), 0, 4);
         _windowsUserText.Dock = DockStyle.Fill;
         connectionGrid.Controls.Add(_windowsUserText, 1, 4);
-        FlowLayoutPanel connectionButtons = CreateButtonRow(discoverButton, connectButton, disconnectButton);
+        FlowLayoutPanel connectionButtons = CreateButtonRow(discoverButton, remoteSearchButton, disconnectButton);
         connectionGrid.Controls.Add(connectionButtons, 0, 5);
         connectionGrid.SetColumnSpan(connectionButtons, 2);
         _connectionBox.Controls.Add(connectionGrid);
@@ -370,16 +373,24 @@ public sealed class MainForm : Form
         return panel;
     }
 
-    private async Task ConnectAsync()
+    private async Task ConnectRemoteAsync()
     {
         if (_client?.IsConnected == true)
         {
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_studentCodeText.Text) || string.IsNullOrWhiteSpace(_studentNameText.Text))
+        await ConnectWithResolverAsync(
+            "Đang tìm giáo viên khác mạng qua máy chủ relay...",
+            ResolveBackendEndpointAsync);
+    }
+
+    private async Task ConnectWithResolverAsync(
+        string startMessage,
+        Func<Task<(string host, int port, PolicySnapshot? policy, bool useRelay, string relaySecret)>> resolver)
+    {
+        if (!ValidateConnectionInputs())
         {
-            Log("Vui lòng nhập mã sinh viên và tên sinh viên.");
             return;
         }
 
@@ -387,8 +398,8 @@ public sealed class MainForm : Form
         CancelReconnectLoop();
         try
         {
-            Log("Đang tra cứu phiên thi qua máy chủ...");
-            (string host, int port, PolicySnapshot? lookupPolicy, bool useRelay, string relaySecret) = await ResolveTeacherEndpointAsync();
+            Log(startMessage);
+            (string host, int port, PolicySnapshot? lookupPolicy, bool useRelay, string relaySecret) = await resolver();
             await ConnectToResolvedEndpointAsync(host, port, lookupPolicy, useRelay, relaySecret);
         }
         catch (Exception ex)
@@ -400,11 +411,21 @@ public sealed class MainForm : Form
 
     private async Task DiscoverTeacherAsync()
     {
+        if (_client?.IsConnected == true)
+        {
+            return;
+        }
+
+        if (!ValidateConnectionInputs())
+        {
+            return;
+        }
+
         Log("Đang tìm máy giáo viên trong mạng LAN (chỉ dùng khi cùng Wi-Fi/LAN)...");
         DiscoveryAnnouncement? announcement = await TeacherDiscoveryClient.DiscoverAsync(_sessionIdText.Text.Trim(), TimeSpan.FromSeconds(5));
         if (announcement is null)
         {
-            Log("Không tìm thấy máy giáo viên trong LAN. Nếu thi từ xa/khác Wi-Fi, bấm Kết nối để tra cứu qua máy chủ relay.");
+            Log("Không tìm thấy máy giáo viên trong LAN. Nếu thi từ xa/khác Wi-Fi, bấm Tìm/Kết nối khác mạng.");
             return;
         }
 
@@ -412,7 +433,17 @@ public sealed class MainForm : Form
         _portInput.Value = Math.Clamp(announcement.Port, (int)_portInput.Minimum, (int)_portInput.Maximum);
         _sessionIdText.Text = announcement.SessionId;
         _sessionSummaryLabel.Text = $"Phiên {announcement.SessionId}";
-        Log($"Đã tìm thấy máy giáo viên {announcement.TeacherMachine} tại {announcement.Host}:{announcement.Port}.");
+        RememberLanEndpoint(announcement.Host, announcement.Port, announcement.SessionId);
+        Log($"Đã tìm thấy máy giáo viên {announcement.TeacherMachine} tại {announcement.Host}:{announcement.Port}. Đang kết nối LAN...");
+        try
+        {
+            await ConnectToResolvedEndpointAsync(announcement.Host, announcement.Port, null, false, "");
+        }
+        catch (Exception ex)
+        {
+            Log($"Đã tìm thấy giáo viên nhưng kết nối LAN chưa thành công: {ex.Message}");
+            SetConnectionStatus("Chưa kết nối");
+        }
     }
 
     private async Task DisconnectAsync()
@@ -424,7 +455,7 @@ public sealed class MainForm : Form
         _isHandRaised = false;
         if (_handRaiseButton is not null)
         {
-            _handRaiseButton.Text = "Dơ tay";
+            _handRaiseButton.Text = "Giơ tay";
         }
         if (_client is not null)
         {
@@ -442,6 +473,30 @@ public sealed class MainForm : Form
         SetScreenStatus("Đang chờ");
         SetSubmissionStatus("Chưa nộp");
         _sessionSummaryLabel.Text = $"Phiên {_sessionIdText.Text.Trim()}";
+    }
+
+    private bool ValidateConnectionInputs()
+    {
+        if (string.IsNullOrWhiteSpace(_studentCodeText.Text) || string.IsNullOrWhiteSpace(_studentNameText.Text))
+        {
+            Log("Vui lòng nhập mã sinh viên và tên sinh viên.");
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(_sessionIdText.Text) || string.IsNullOrWhiteSpace(_tokenText.Text))
+        {
+            Log("Vui lòng nhập mã phiên và mã bảo vệ.");
+            return false;
+        }
+
+        return true;
+    }
+
+    private void RememberLanEndpoint(string host, int port, string sessionId)
+    {
+        _lastLanHost = host;
+        _lastLanPort = port;
+        _lastLanSessionId = sessionId;
     }
 
     private void StartTimers()
@@ -619,7 +674,7 @@ public sealed class MainForm : Form
     {
         if (_client is null || !_client.IsConnected)
         {
-            Log("Hãy kết nối với máy giáo viên trước khi dơ tay.");
+            Log("Hãy kết nối với máy giáo viên trước khi giơ tay.");
             return;
         }
 
@@ -627,10 +682,10 @@ public sealed class MainForm : Form
         {
             await _client.SendHandRaiseClearAsync("Sinh viên đã tự hạ tay.");
             _isHandRaised = false;
-            _handRaiseStateLabel.Text = "Đã tắt dơ tay";
+            _handRaiseStateLabel.Text = "Đã tắt giơ tay";
             if (_handRaiseButton is not null)
             {
-                _handRaiseButton.Text = "Dơ tay";
+                _handRaiseButton.Text = "Giơ tay";
             }
 
             Log("Đã tắt yêu cầu hỗ trợ.");
@@ -642,7 +697,7 @@ public sealed class MainForm : Form
         _handRaiseStateLabel.Text = "Đã gửi yêu cầu hỗ trợ";
         if (_handRaiseButton is not null)
         {
-            _handRaiseButton.Text = "Tắt dơ tay";
+            _handRaiseButton.Text = "Tắt giơ tay";
         }
 
         Log("Đã gửi yêu cầu hỗ trợ tới giáo viên.");
@@ -688,7 +743,7 @@ public sealed class MainForm : Form
                     _handRaiseStateLabel.Text = "Giáo viên đã xử lý yêu cầu";
                     if (_handRaiseButton is not null)
                     {
-                        _handRaiseButton.Text = "Dơ tay";
+                        _handRaiseButton.Text = "Giơ tay";
                     }
                 });
                 break;
@@ -917,7 +972,7 @@ public sealed class MainForm : Form
         _isHandRaised = false;
         if (_handRaiseButton is not null)
         {
-            _handRaiseButton.Text = "Dơ tay";
+            _handRaiseButton.Text = "Giơ tay";
         }
         SetConnectionStatus("Chưa kết nối");
         SetScreenStatus("Đang chờ");
@@ -942,60 +997,24 @@ public sealed class MainForm : Form
     private async Task<(string host, int port, PolicySnapshot? policy, bool useRelay, string relaySecret)> ResolveTeacherEndpointAsync()
     {
         string sessionCode = _sessionIdText.Text.Trim();
-        string sessionToken = _tokenText.Text.Trim();
+
+        if (!string.IsNullOrWhiteSpace(_lastLanHost) &&
+            _lastLanPort > 0 &&
+            string.Equals(_lastLanSessionId, sessionCode, StringComparison.OrdinalIgnoreCase))
+        {
+            Log($"Dùng máy giáo viên LAN đã tìm thấy: {_lastLanHost}:{_lastLanPort}.");
+            return (_lastLanHost, _lastLanPort, null, false, "");
+        }
 
         Exception? backendLookupError = null;
         try
         {
-            JoinSessionLookupDto? lookup = await _sessionLookupClient.LookupAsync(AppRuntime.BackendBaseUrl, sessionCode, sessionToken);
-            if (lookup is not null)
-            {
-                if (string.Equals(lookup.ConnectionMode, "remote", StringComparison.OrdinalIgnoreCase) && !lookup.RemoteJoinEnabled)
-                {
-                    throw new InvalidOperationException("Giáo viên chưa bật cho phép kết nối từ xa cho phiên này.");
-                }
-
-                bool relayMode = string.Equals(lookup.ConnectionMode, "relay", StringComparison.OrdinalIgnoreCase) || lookup.RelayEnabled;
-                if (relayMode)
-                {
-                    if (string.IsNullOrWhiteSpace(lookup.RelayHost) || lookup.RelayPort is null or <= 0)
-                    {
-                        throw new InvalidOperationException("Phiên thi đã chọn relay nhưng máy chủ chưa có thông tin relay. Hãy nhấn Bắt đầu phiên trên máy giáo viên.");
-                    }
-
-                    _serverText.Text = lookup.RelayHost;
-                    _portInput.Value = Math.Clamp(lookup.RelayPort.Value, (int)_portInput.Minimum, (int)_portInput.Maximum);
-                    _sessionSummaryLabel.Text = $"Phiên {lookup.SessionCode}";
-                    Log("Đã nhận thông tin máy chủ relay. Đang kết nối qua máy chủ, không cần cùng Wi-Fi/LAN.");
-                    return (lookup.RelayHost, lookup.RelayPort.Value, BuildPolicyFromLookup(lookup), true, lookup.RelaySecret ?? "");
-                }
-
-                if (string.IsNullOrWhiteSpace(lookup.Host) || lookup.Port is null or <= 0)
-                {
-                    throw new InvalidOperationException("Phiên thi chưa công bố điểm kết nối từ giáo viên.");
-                }
-
-                if (string.Equals(lookup.ConnectionMode, "remote", StringComparison.OrdinalIgnoreCase) &&
-                    LooksLikePrivateHost(lookup.Host))
-                {
-                    Log($"Điểm kết nối từ xa hiện là IP nội bộ {lookup.Host}. Sinh viên khác mạng sẽ không vào được nếu giáo viên chưa publish IP/domain public.");
-                }
-
-                _serverText.Text = lookup.Host;
-                _portInput.Value = Math.Clamp(lookup.Port.Value, (int)_portInput.Minimum, (int)_portInput.Maximum);
-                _sessionSummaryLabel.Text = $"Phiên {lookup.SessionCode}";
-                Log("Đã nhận điểm kết nối từ máy chủ.");
-                return (lookup.Host, lookup.Port.Value, BuildPolicyFromLookup(lookup), false, "");
-            }
-        }
-        catch (InvalidOperationException)
-        {
-            throw;
+            return await ResolveBackendEndpointAsync();
         }
         catch (Exception ex)
         {
             backendLookupError = ex;
-            Log($"Chưa tra cứu được phiên qua máy chủ: {ex.Message}. Sẽ thử tìm trong LAN nếu cùng mạng.");
+            Log($"Chưa tra cứu được phiên qua máy chủ: {ex.Message}. Sẽ thử tìm giáo viên trong LAN.");
         }
 
         DiscoveryAnnouncement? announcement = await TeacherDiscoveryClient.DiscoverAsync(sessionCode, TimeSpan.FromSeconds(2));
@@ -1003,6 +1022,7 @@ public sealed class MainForm : Form
         {
             _serverText.Text = announcement.Host;
             _portInput.Value = Math.Clamp(announcement.Port, (int)_portInput.Minimum, (int)_portInput.Maximum);
+            RememberLanEndpoint(announcement.Host, announcement.Port, announcement.SessionId);
             Log($"Đã tự tìm thấy máy giáo viên trong LAN tại {announcement.Host}:{announcement.Port}.");
             return (announcement.Host, announcement.Port, null, false, "");
         }
@@ -1013,6 +1033,43 @@ public sealed class MainForm : Form
         }
 
         throw new InvalidOperationException("Không tìm được thông tin phiên thi trên máy chủ và không tìm thấy giáo viên trong LAN.");
+    }
+
+    private async Task<(string host, int port, PolicySnapshot? policy, bool useRelay, string relaySecret)> ResolveBackendEndpointAsync()
+    {
+        string sessionCode = _sessionIdText.Text.Trim();
+        string sessionToken = _tokenText.Text.Trim();
+        JoinSessionLookupDto? lookup = await _sessionLookupClient.LookupAsync(AppRuntime.BackendBaseUrl, sessionCode, sessionToken);
+        if (lookup is null)
+        {
+            throw new InvalidOperationException("Không tìm được thông tin phiên thi trên máy chủ.");
+        }
+
+        bool relayMode = string.Equals(lookup.ConnectionMode, "relay", StringComparison.OrdinalIgnoreCase) || lookup.RelayEnabled;
+        if (relayMode)
+        {
+            if (string.IsNullOrWhiteSpace(lookup.RelayHost) || lookup.RelayPort is null or <= 0)
+            {
+                throw new InvalidOperationException("Phiên thi đã chọn relay nhưng máy chủ chưa có thông tin relay. Hãy nhấn Bắt đầu phiên trên máy giáo viên.");
+            }
+
+            _serverText.Text = lookup.RelayHost;
+            _portInput.Value = Math.Clamp(lookup.RelayPort.Value, (int)_portInput.Minimum, (int)_portInput.Maximum);
+            _sessionSummaryLabel.Text = $"Phiên {lookup.SessionCode}";
+            Log("Đã nhận thông tin máy chủ relay. Đang kết nối qua máy chủ, không cần cùng Wi-Fi/LAN.");
+            return (lookup.RelayHost, lookup.RelayPort.Value, BuildPolicyFromLookup(lookup), true, lookup.RelaySecret ?? "");
+        }
+
+        if (string.IsNullOrWhiteSpace(lookup.Host) || lookup.Port is null or <= 0)
+        {
+            throw new InvalidOperationException("Phiên thi trên máy chủ chưa công bố điểm kết nối.");
+        }
+
+        _serverText.Text = lookup.Host;
+        _portInput.Value = Math.Clamp(lookup.Port.Value, (int)_portInput.Minimum, (int)_portInput.Maximum);
+        _sessionSummaryLabel.Text = $"Phiên {lookup.SessionCode}";
+        Log("Đã nhận điểm kết nối từ máy chủ.");
+        return (lookup.Host, lookup.Port.Value, BuildPolicyFromLookup(lookup), false, "");
     }
 
     private static PolicySnapshot BuildPolicyFromLookup(JoinSessionLookupDto lookup)
@@ -1139,30 +1196,6 @@ public sealed class MainForm : Form
         {
             Interlocked.Exchange(ref _reconnectLoopStarted, 0);
         }
-    }
-
-    private static bool LooksLikePrivateHost(string host)
-    {
-        if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        if (!System.Net.IPAddress.TryParse(host, out System.Net.IPAddress? ip))
-        {
-            return false;
-        }
-
-        byte[] bytes = ip.GetAddressBytes();
-        if (bytes.Length != 4)
-        {
-            return false;
-        }
-
-        return bytes[0] == 10
-            || (bytes[0] == 127)
-            || (bytes[0] == 192 && bytes[1] == 168)
-            || (bytes[0] == 172 && bytes[1] is >= 16 and <= 31);
     }
 
     private bool CanStartSubmission()

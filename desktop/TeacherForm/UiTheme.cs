@@ -9,6 +9,14 @@ internal static class UiTheme
     private static readonly Color Border = Color.FromArgb(211, 220, 228);
     private static readonly Color Text = Color.FromArgb(25, 43, 57);
     private static readonly Color Muted = Color.FromArgb(95, 113, 126);
+    private static readonly Color SuccessBack = Color.FromArgb(219, 245, 232);
+    private static readonly Color SuccessText = Color.FromArgb(17, 104, 61);
+    private static readonly Color WarningBack = Color.FromArgb(255, 244, 214);
+    private static readonly Color WarningText = Color.FromArgb(137, 87, 0);
+    private static readonly Color DangerBack = Color.FromArgb(255, 228, 230);
+    private static readonly Color DangerText = Color.FromArgb(178, 32, 43);
+    private static readonly Color InfoBack = Color.FromArgb(226, 239, 255);
+    private static readonly Color InfoText = Color.FromArgb(29, 78, 137);
 
     public static void Apply(Form form)
     {
@@ -47,9 +55,14 @@ internal static class UiTheme
                     StyleGroupBox(group);
                     break;
                 case FlowLayoutPanel flow:
-                    flow.BackColor = Equals(flow.Tag, "status-chip")
-                        ? AccentSoft
-                        : Equals(flow.Tag, "surface-flow") ? Surface : AppBackground;
+                    if (Equals(flow.Tag, "status-chip"))
+                    {
+                        StyleStatusChip(flow);
+                    }
+                    else
+                    {
+                        flow.BackColor = Equals(flow.Tag, "surface-flow") ? Surface : AppBackground;
+                    }
                     break;
                 case TableLayoutPanel table:
                     table.BackColor = AppBackground;
@@ -63,6 +76,11 @@ internal static class UiTheme
                     StylePanel(panel);
                     break;
                 case Label label:
+                    if (Equals(label.Parent?.Tag, "status-chip"))
+                    {
+                        break;
+                    }
+
                     label.ForeColor = label.Text.Contains("Đã dừng", StringComparison.OrdinalIgnoreCase)
                         ? Muted
                         : Text;
@@ -151,5 +169,49 @@ internal static class UiTheme
         {
             panel.BackColor = AccentSoft;
         }
+    }
+
+    public static void StyleStatusChip(FlowLayoutPanel chip)
+    {
+        Label? label = chip.Controls.OfType<Label>().FirstOrDefault();
+        string text = label?.Text ?? string.Empty;
+        (Color backColor, Color textColor) = StatusColors(text);
+
+        chip.BackColor = backColor;
+        foreach (Label childLabel in chip.Controls.OfType<Label>())
+        {
+            childLabel.ForeColor = textColor;
+        }
+    }
+
+    private static (Color BackColor, Color TextColor) StatusColors(string text)
+    {
+        if (ContainsAny(text, "lỗi", "mất kết nối", "ngắt kết nối", "Đã dừng", "chưa chạy"))
+        {
+            return (DangerBack, DangerText);
+        }
+
+        if (ContainsAny(text, "chưa kết nối", "đang đăng nhập", "đang chờ", "Sinh viên: 0"))
+        {
+            return (WarningBack, WarningText);
+        }
+
+        if (ContainsAny(text, "đã kết nối", "đang hoạt động", "trực tuyến"))
+        {
+            return (SuccessBack, SuccessText);
+        }
+
+        if (text.StartsWith("Sinh viên:", StringComparison.OrdinalIgnoreCase)
+            && !text.Contains(": 0", StringComparison.OrdinalIgnoreCase))
+        {
+            return (SuccessBack, SuccessText);
+        }
+
+        return (InfoBack, InfoText);
+    }
+
+    private static bool ContainsAny(string text, params string[] values)
+    {
+        return values.Any(value => text.Contains(value, StringComparison.OrdinalIgnoreCase));
     }
 }
