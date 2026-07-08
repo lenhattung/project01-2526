@@ -96,17 +96,22 @@ internal static class UiTheme
 
     private static void StyleButton(Button button)
     {
+        bool isLargeAction = string.Equals(button.Name, "large-action-button", StringComparison.OrdinalIgnoreCase);
+        bool isSidebar = string.Equals(button.Name, "sidebar-button", StringComparison.OrdinalIgnoreCase);
+
         button.FlatStyle = FlatStyle.Flat;
         button.FlatAppearance.BorderColor = Border;
         button.FlatAppearance.BorderSize = 1;
         button.BackColor = IsPrimaryButton(button.Text) ? Accent : Surface;
         button.ForeColor = button.BackColor == Accent ? Color.White : Text;
-        button.Height = 36;
-        button.Padding = new Padding(10, 5, 10, 5);
-        button.Margin = new Padding(4);
-        button.AutoSize = true;
+        button.Height = isLargeAction ? 56 : (isSidebar ? 52 : 36);
+        button.Padding = isLargeAction ? new Padding(18, 8, 14, 8) : new Padding(10, 5, 10, 5);
+        button.Margin = isLargeAction ? new Padding(6) : (isSidebar ? new Padding(0, 0, 0, 8) : new Padding(4));
+        button.AutoSize = !isLargeAction && !isSidebar;
         button.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        button.MinimumSize = new Size(105, 36);
+        button.MinimumSize = isLargeAction
+            ? new Size(Math.Max(button.Width, 150), 56)
+            : (isSidebar ? new Size(Math.Max(button.Width, 132), 52) : new Size(105, 36));
         if (button.Tag is string iconName)
         {
             AppIcons.ApplyToButton(button, iconName);

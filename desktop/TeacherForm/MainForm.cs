@@ -80,13 +80,14 @@ public sealed class MainForm : Form
     private readonly TeacherDiscoveryBroadcaster _discoveryBroadcaster;
     private DateTimeOffset? _sessionStartedAtUtc;
     private ITeacherSessionTransport? _server;
+    private FloatingChatForm? _chatPopup;
 
     public MainForm()
     {
         Text = "ExamGuard - Máy giáo viên";
         Width = 1480;
         Height = 920;
-        MinimumSize = new Size(1280, 720);
+        MinimumSize = new Size(1360, 760);
         StartPosition = FormStartPosition.CenterScreen;
         IsMdiContainer = true;
         AppIcons.SetFormIcon(this, "shield");
@@ -176,7 +177,7 @@ public sealed class MainForm : Form
     {
         Control sidebar = BuildSidebar();
         sidebar.Dock = DockStyle.Fill;
-        Panel host = new() { Dock = DockStyle.Left, Width = 122, Padding = new Padding(12, 8, 8, 8) };
+        Panel host = new() { Dock = DockStyle.Left, Width = 166, Padding = new Padding(12, 8, 8, 8) };
         host.Controls.Add(sidebar);
         return host;
     }
@@ -279,7 +280,7 @@ public sealed class MainForm : Form
             RowCount = 1,
             Margin = new Padding(0)
         };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112F));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 152F));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 320F));
 
@@ -334,12 +335,13 @@ public sealed class MainForm : Form
 
     private Button CreateSidebarButton(string key, string text, string iconName, Action onClick)
     {
-        Button button = IconButton(text, iconName, 92);
-        button.TextAlign = ContentAlignment.MiddleCenter;
-        button.ImageAlign = ContentAlignment.TopCenter;
-        button.TextImageRelation = TextImageRelation.ImageAboveText;
-        button.Height = 60;
-        button.Width = 96;
+        Button button = IconButton(text, iconName, 136);
+        button.Name = "sidebar-button";
+        button.TextAlign = ContentAlignment.MiddleLeft;
+        button.ImageAlign = ContentAlignment.MiddleLeft;
+        button.TextImageRelation = TextImageRelation.ImageBeforeText;
+        button.Height = 52;
+        button.Width = 136;
         button.Click += (_, _) =>
         {
             SetActiveSidebarButton(key);
@@ -404,11 +406,72 @@ public sealed class MainForm : Form
             ColumnCount = 1,
             Padding = new Padding(0, 8, 8, 8)
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 270F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 245F));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        layout.Controls.Add(BuildSingleSectionPage(BuildSessionGroup()), 0, 0);
+        layout.Controls.Add(BuildTeacherWorkflowPanel(), 0, 0);
         layout.Controls.Add(WrapCard("Giám sát màn hình sinh viên", BuildMosaicArea(), "monitor"), 0, 1);
         return layout;
+    }
+
+    private Control BuildTeacherWorkflowPanel()
+    {
+        GroupBox box = CreateGroupBox("Bắt đầu buổi thi");
+        TableLayoutPanel layout = new()
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Padding = new Padding(2)
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 390F));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+
+        TableLayoutPanel sessionGrid = CreateFieldGrid(105);
+        sessionGrid.Dock = DockStyle.Fill;
+        sessionGrid.Controls.Add(LabelFor("Mã phiên"), 0, 0);
+        sessionGrid.Controls.Add(_sessionIdText, 1, 0);
+        sessionGrid.Controls.Add(LabelFor("Mã bảo vệ"), 0, 1);
+        sessionGrid.Controls.Add(_sessionTokenText, 1, 1);
+        sessionGrid.Controls.Add(LabelFor("Cổng"), 0, 2);
+        sessionGrid.Controls.Add(_portInput, 1, 2);
+        sessionGrid.Controls.Add(LabelFor("Kết nối"), 0, 3);
+        sessionGrid.Controls.Add(_connectionModePicker, 1, 3);
+
+        TableLayoutPanel actions = new()
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 3,
+            RowCount = 2,
+            Padding = new Padding(6, 6, 0, 0),
+            Margin = new Padding(4, 0, 0, 0)
+        };
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34F));
+        actions.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+        actions.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+
+        Button loginButton = LargeActionButton("1. Đăng nhập máy chủ", "log-in", 0);
+        loginButton.Click += async (_, _) => await LoginBackendAsync();
+        Button startButton = LargeActionButton("2. Bắt đầu phiên", "play-circle", 0);
+        startButton.Click += async (_, _) => await StartServerAsync();
+        Button policyButton = LargeActionButton("3. Gửi quy định", "save", 0);
+        policyButton.Click += async (_, _) => await SendPolicyAsync();
+        Button examButton = LargeActionButton("4. Phát đề thi", "folder", 0);
+        examButton.Click += (_, _) => ShowWorkspacePage("distribution");
+        Button stopButton = LargeActionButton("Dừng phiên", "stop-circle", 0);
+        stopButton.Click += async (_, _) => await StopServerAsync();
+
+        actions.Controls.Add(loginButton, 0, 0);
+        actions.Controls.Add(startButton, 1, 0);
+        actions.Controls.Add(policyButton, 2, 0);
+        actions.Controls.Add(examButton, 0, 1);
+        actions.Controls.Add(stopButton, 1, 1);
+        actions.SetColumnSpan(stopButton, 2);
+        layout.Controls.Add(sessionGrid, 0, 0);
+        layout.Controls.Add(actions, 1, 0);
+        box.Controls.Add(layout);
+        return box;
     }
 
     private Control BuildSingleSectionPage(Control section)
@@ -542,10 +605,10 @@ public sealed class MainForm : Form
             ColumnCount = 1,
             RowCount = 4
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 42F));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 28F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 44F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 30F));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 18F));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 12F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 8F));
 
         Panel screenPanel = new() { Dock = DockStyle.Fill };
         screenPanel.Controls.Add(_detailFrame);
@@ -557,8 +620,12 @@ public sealed class MainForm : Form
 
         layout.Controls.Add(WrapCard("Màn hình đang chọn", screenPanel, "monitor"), 0, 0);
         layout.Controls.Add(WrapCard("Webcam đang chọn", webcamPanel, "video"), 0, 1);
+        Button chatPopupButton = IconButton("Mở chat", "message-circle", 130);
+        chatPopupButton.Dock = DockStyle.Fill;
+        chatPopupButton.Click += (_, _) => ShowChatPopup();
+
         layout.Controls.Add(WrapCard("Thông tin sinh viên", _selectedStudentInfoText, "user"), 0, 2);
-        layout.Controls.Add(WrapCard("Trao đổi nhanh", _chatHistoryText, "message-circle"), 0, 3);
+        layout.Controls.Add(WrapCard("Trao đổi", chatPopupButton, "message-circle"), 0, 3);
         return layout;
     }
 
@@ -901,6 +968,23 @@ public sealed class MainForm : Form
         return new Button { Text = text, Width = width, Tag = iconName };
     }
 
+    private static Button LargeActionButton(string text, string iconName, int width)
+    {
+        return new Button
+        {
+            Name = "large-action-button",
+            Text = text,
+            Width = width,
+            Height = 56,
+            Dock = DockStyle.Fill,
+            Margin = new Padding(6),
+            Tag = iconName,
+            TextAlign = ContentAlignment.MiddleCenter,
+            ImageAlign = ContentAlignment.MiddleLeft,
+            TextImageRelation = TextImageRelation.ImageBeforeText
+        };
+    }
+
     private static GroupBox CreateGroupBox(string text)
     {
         return new GroupBox
@@ -1134,19 +1218,15 @@ public sealed class MainForm : Form
 
     private async Task SendChatAsync()
     {
-        if (_server is null)
-        {
-            Log("Hãy bắt đầu phiên trước khi gửi tin nhắn.");
-            return;
-        }
-
-        string? target = SelectedStudentId();
-        await _server.SendChatAsync(target, _teacherMessageText.Text.Trim());
-        await _backendClient.PostChatMessageAsync(CurrentBackendSessionId(), "teacher", "teacher", target, _teacherMessageText.Text.Trim(), target is null ? "all" : "one");
-        AppendChatHistory($"Giáo viên -> {(target ?? "Tất cả")}: {_teacherMessageText.Text.Trim()}");
+        await SendChatMessageAsync(SelectedStudentId(), _teacherMessageText.Text.Trim());
     }
 
     private async Task SendChatAllAsync()
+    {
+        await SendChatMessageAsync(null, _teacherMessageText.Text.Trim());
+    }
+
+    private async Task SendChatMessageAsync(string? target, string message)
     {
         if (_server is null)
         {
@@ -1154,9 +1234,15 @@ public sealed class MainForm : Form
             return;
         }
 
-        await _server.SendChatAsync(null, _teacherMessageText.Text.Trim());
-        await _backendClient.PostChatMessageAsync(CurrentBackendSessionId(), "teacher", "teacher", null, _teacherMessageText.Text.Trim(), "all");
-        AppendChatHistory($"Giáo viên -> Tất cả: {_teacherMessageText.Text.Trim()}");
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            Log("Tin nhắn đang trống.");
+            return;
+        }
+
+        await _server.SendChatAsync(target, message);
+        await _backendClient.PostChatMessageAsync(CurrentBackendSessionId(), "teacher", "teacher", target, message, target is null ? "all" : "one");
+        AppendChatHistory($"Giáo viên -> {(target ?? "Tất cả")}: {message}");
     }
 
     private async Task ClearHandRaiseAsync()
@@ -1909,6 +1995,25 @@ public sealed class MainForm : Form
         _chatHistoryText.ScrollToCaret();
     }
 
+    private void ShowChatPopup()
+    {
+        if (_chatPopup is null || _chatPopup.IsDisposed)
+        {
+            _chatPopup = new FloatingChatForm(
+                _chatHistoryText,
+                SelectedStudentId,
+                SendChatMessageAsync);
+        }
+
+        if (!_chatPopup.Visible)
+        {
+            _chatPopup.Show(this);
+        }
+
+        _chatPopup.BringToFront();
+        _chatPopup.Activate();
+    }
+
     private void ShowSelectedStudentViewer(string streamKind)
     {
         if (SelectedStudentId() is not { } studentId || !_cards.TryGetValue(studentId, out StudentCard? card))
@@ -2061,6 +2166,106 @@ public sealed class MainForm : Form
                 : _isOnline ? Color.FromArgb(211, 220, 228) : Color.FromArgb(214, 96, 96);
             using Pen pen = new(border, _handRaised ? 3F : 1.5F);
             e.Graphics.DrawRectangle(pen, 1, 1, Width - 3, Height - 3);
+        }
+    }
+
+    private sealed class FloatingChatForm : Form
+    {
+        private readonly TextBox _messageText = new()
+        {
+            Dock = DockStyle.Fill,
+            Multiline = true,
+            ScrollBars = ScrollBars.Vertical,
+            Height = 84
+        };
+        private readonly Func<string?> _selectedTarget;
+        private readonly Func<string?, string, Task> _sendAsync;
+
+        public FloatingChatForm(TextBox historyText, Func<string?> selectedTarget, Func<string?, string, Task> sendAsync)
+        {
+            _selectedTarget = selectedTarget;
+            _sendAsync = sendAsync;
+            Text = "Trao đổi với sinh viên";
+            Width = 560;
+            Height = 520;
+            MinimumSize = new Size(460, 380);
+            StartPosition = FormStartPosition.CenterParent;
+            AppIcons.SetFormIcon(this, "message-circle");
+
+            TableLayoutPanel layout = new()
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 3,
+                Padding = new Padding(12)
+            };
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 94F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48F));
+
+            historyText.Dock = DockStyle.Fill;
+            historyText.ReadOnly = true;
+            historyText.Multiline = true;
+            historyText.ScrollBars = ScrollBars.Vertical;
+
+            FlowLayoutPanel buttons = new()
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.RightToLeft,
+                WrapContents = false
+            };
+            Button sendSelectedButton = new() { Text = "Gửi sinh viên đang chọn", Width = 190, Tag = "send" };
+            Button sendAllButton = new() { Text = "Gửi tất cả", Width = 120, Tag = "message-circle" };
+            sendSelectedButton.Click += async (_, _) => await SendSelectedAsync();
+            sendAllButton.Click += async (_, _) => await SendAllAsync();
+            buttons.Controls.AddRange([sendSelectedButton, sendAllButton]);
+
+            layout.Controls.Add(historyText, 0, 0);
+            layout.Controls.Add(_messageText, 0, 1);
+            layout.Controls.Add(buttons, 0, 2);
+            Controls.Add(layout);
+            UiTheme.Apply(this);
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (e.CloseReason == CloseReason.UserClosing)
+            {
+                e.Cancel = true;
+                Hide();
+                return;
+            }
+
+            base.OnFormClosing(e);
+        }
+
+        private async Task SendSelectedAsync()
+        {
+            string? target = _selectedTarget();
+            if (string.IsNullOrWhiteSpace(target))
+            {
+                MessageBox.Show(this, "Hãy chọn một sinh viên trước khi gửi tin nhắn 1-1.", "ExamGuard", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            await SendAndClearAsync(target);
+        }
+
+        private async Task SendAllAsync()
+        {
+            await SendAndClearAsync(null);
+        }
+
+        private async Task SendAndClearAsync(string? target)
+        {
+            string message = _messageText.Text.Trim();
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            await _sendAsync(target, message);
+            _messageText.Clear();
         }
     }
 

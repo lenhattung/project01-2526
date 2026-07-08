@@ -17,5 +17,6 @@ internal sealed class WorkspaceChildForm : Form
 
         content.Dock = DockStyle.Fill;
         Controls.Add(content);
+        UiTheme.Apply(this);
     }
 }
