@@ -1,36 +1,119 @@
 # ExamGuard
 
-ExamGuard is a LAN classroom exam-monitoring system inspired by NetOp School. It includes:
+ExamGuard là hệ thống giám sát phòng thi/lớp học theo mô hình Teacher - Student, lấy cảm hứng từ NetOp School. Project hiện tại ưu tiên triển khai production bằng Docker Compose trên VPS: MySQL, Yii2 backend và TCP relay chạy trên server; TeacherForm và StudentForm chạy trên máy Windows của giáo viên/sinh viên.
 
-- `TeacherForm`: teacher console, LAN socket server, student mosaic, control actions, reports.
-- `StudentForm`: student client, screen capture, process monitoring, teacher command receiver, submission client.
-- `ExamGuard.Protocol`: shared TCP framing, policy metadata, and LAN discovery payloads.
-- `backend/`: Yii2 REST API with MySQL and Hostinger-ready deployment support.
-- `services/ExamGuard.Relay/`: TCP relay service foundation for VPS-based remote exams.
-
-## Repository Layout
+## Kiến Trúc Hiện Tại
 
 ```text
-backend/                           Yii2 REST API, Dockerfile, config, models, migrations
-desktop/TeacherForm/               Teacher WinForms app
-desktop/StudentForm/               Student WinForms app
-desktop/ExamGuard.Protocol/        Shared socket protocol library
-desktop/StudentSimulator/          LAN simulator for multiple students
-desktop/ExamGuard.Protocol.SmokeTests/ smoke tests
-services/ExamGuard.Relay/          VPS relay socket service
-docs/                              setup and roadmap docs
-scripts/                           release and automation scripts
-.codex/skills/                     repo-local agent skills
+├─ MySQL 8.4                 Chỉ publish localhost 127.0.0.1:3307
+├─ Yii2 Backend               Public HTTP :8081
+└─ ExamGuard Relay TCP        Public TCP :9090
+
+Windows TeacherForm           Đăng nhập backend, mở phiên, kết nối relay
+Windows StudentForm           Nhập mã phiên/mã bảo vệ/mã SV, tự lookup backend và kết nối relay
 ```
 
-## Prerequisites
+Luồng cùng mạng LAN vẫn hoạt động bằng discovery nội bộ. Luồng khác Wi-Fi/từ xa dùng VPS relay, không cần public IP hoặc port forwarding máy giáo viên.
 
-1. Windows 10 or 11 for desktop apps.
-2. .NET 8 SDK or newer with Windows Desktop support.
-3. PHP 8.2+ and Composer for the Yii2 backend.
-4. Local LAN access between teacher and student machines.
+## Cấu Trúc Repo
 
-## Step 1: Build and verify desktop code
+```text
+backend/                         Yii2 REST API, Dockerfile, config, models, migrations
+desktop/TeacherForm/             WinForms app máy giáo viên
+desktop/StudentForm/             WinForms app máy sinh viên
+desktop/ExamGuard.Protocol/      Shared socket protocol
+desktop/StudentSimulator/        Tool mô phỏng nhiều student
+services/ExamGuard.Relay/        TCP relay service chạy trên VPS
+scripts/                         Script publish desktop/package
+docker-compose.yml               Chạy MySQL + backend + relay
+.env                             Cấu hình production/local Docker
+```
+
+## Yêu Cầu
+
+- VPS Linux đã cài Docker và Docker Compose plugin.
+- Windows 10/11 cho TeacherForm và StudentForm.
+- .NET 8 SDK nếu build desktop từ source.
+- Port VPS cần mở:
+  - `8081/tcp` cho backend API.
+  - `9090/tcp` cho relay.
+- Không mở MySQL ra Internet. Giữ `MYSQL_PUBLISHED_PORT=127.0.0.1:3307`.
+
+## Cấu Hình `.env`
+
+File `.env` là nguồn cấu hình chính khi chạy Docker Compose:
+
+```env
+MYSQL_DATABASE=
+MYSQL_USER=
+MYSQL_PASSWORD=<random-secret>
+MYSQL_ROOT_PASSWORD=<random-root-secret>
+MYSQL_PUBLISHED_PORT=127.0.0.1:3307
+
+DB_DSN=mysql:host=mysql;dbname=;charset=utf8mb4
+DB_USERNAME=
+DB_PASSWORD=<giống MYSQL_PASSWORD>
+COOKIE_VALIDATION_KEY=<random-cookie-key>
+
+BACKEND_PUBLISHED_PORT=8081
+RELAY_PORT=9090
+RELAY_PUBLISHED_PORT=9090
+RELAY_SHARED_SECRET=<random-relay-secret>
+RELAY_MAX_PAYLOAD_BYTES=52428800
+```
+
+Lưu ý: `RELAY_SHARED_SECRET` phải khớp với secret ẩn trong TeacherForm bản build đang dùng. Nếu đổi secret trong `.env`, cần rebuild/publish lại TeacherForm hoặc chuyển secret sang cấu hình ngoài ở phase sau.
+
+## Deploy Backend + Database + Relay Trên VPS
+
+Trên VPS:
+
+```bash
+git clone <repo-url> examguard
+cd examguard
+cp .env.example .env
+nano .env
+docker compose up -d --build
+docker compose --profile tools run --rm migrate
+```
+
+Kiểm tra service:
+
+```bash
+docker compose ps
+curl http://IP:8081/api/health
+```
+
+Kiểm tra service có trong compose:
+
+```bash
+docker compose config --services
+```
+
+Kết quả mong muốn:
+
+```text
+mysql
+backend
+relay
+```
+
+## Cập Nhật Production Sau Khi Pull Code Mới
+
+```bash
+cd examguard
+git pull
+docker compose up -d --build
+docker compose --profile tools run --rm migrate
+```
+
+Nếu chỉ đổi code relay/backend, không cần xóa volume MySQL.
+
+Không dùng lệnh xóa volume nếu database đã có dữ liệu thật. Chỉ recreate volume khi đang test và chấp nhận mất dữ liệu.
+
+## Build Desktop Apps
+
+Trên Windows:
 
 ```powershell
 dotnet restore ExamGuard.sln
@@ -38,209 +121,123 @@ dotnet build ExamGuard.sln -c Release -nologo
 dotnet run --project desktop\ExamGuard.Protocol.SmokeTests\ExamGuard.Protocol.SmokeTests.csproj -c Release --no-build
 ```
 
-Expected result:
-
-- solution builds with `0 Error(s)`
-- smoke test prints `ExamGuard.Protocol smoke tests passed.`
-
-## Step 2: Run backend locally without Docker
-
-Install backend dependencies:
+Publish bản chạy:
 
 ```powershell
-cd backend
-composer install
-Copy-Item config\local.php.example config\local.php
-php yii migrate
-php -S 127.0.0.1:8081 -t web web/router.php
+powershell -ExecutionPolicy Bypass -File .\scripts\publish-desktop.ps1
 ```
 
-Edit `backend\config\local.php` with your real database and cookie key values before migration.
-
-Backend health check:
+Output:
 
 ```text
-http://127.0.0.1:8081/api/health
+artifacts\desktop\TeacherForm\TeacherForm.exe
+artifacts\desktop\StudentForm\StudentForm.exe
+artifacts\desktop\StudentSimulator\StudentSimulator.exe
 ```
 
-Backend regression check:
+## Chạy TeacherForm
 
-```powershell
-.\scripts\test-backend-e2e.ps1
-```
-
-Hostinger deployment guide:
+Mở:
 
 ```text
-docs/hostinger-deploy.md
-docs/deploy-hostinger-vi.md
-docs/chay-local.md
+artifacts\desktop\TeacherForm\TeacherForm.exe
 ```
 
-VPS Docker deployment guide:
+Luồng sử dụng:
+
+1. Nhấn `Đăng nhập máy chủ`.
+2. Tải/chọn phiên thi.
+3. Chọn kiểu kết nối:
+   - `Cùng mạng LAN` nếu phòng máy cùng Wi-Fi/LAN.
+   - `Qua máy chủ relay` nếu student khác mạng Wi-Fi/từ xa.
+4. Nhấn `Mở phiên` nếu phiên backend chưa running.
+5. Nhấn `Bắt đầu phiên`.
+
+Backend URL, relay host, relay port đang được ẩn khỏi UI và dùng mặc định:
 
 ```text
-docs/deploy-vps-docker-vi.md
-docs/deploy-vps-git-docker-compose-vi.md
-docs/ket-noi-teacher-student-khac-mang-wifi.md
+Backend: http://IP:8081
+Relay:   IP:9090
 ```
 
-## Step 3: Use seeded backend defaults
+TeacherForm có thể:
 
-Default teacher account:
+- Giám sát màn hình sinh viên.
+- Giám sát webcam sinh viên, tự nhận lại webcam nếu student bật webcam muộn.
+- Chặn copy/paste theo policy.
+- Chặn phần mềm/từ khóa website theo policy.
+- Chat với một sinh viên hoặc toàn bộ sinh viên.
+- Nhận dơ tay/cảnh báo mất kết nối.
+- Phát file/folder đề thi.
+- Nhận bài nộp dạng `.zip`.
+- Ghi event/submission/chat metadata xuống backend/MySQL.
 
-- Username: `teacher`
-- Password: `teacher123`
+## Chạy StudentForm
 
-Default backend session:
-
-- Backend session id: `1`
-- Session code: `EXAM-001`
-- Socket token: `classroom-token`
-
-Each login issues a new bearer token for the same user. If you test APIs manually, reuse the latest token for all follow-up requests.
-
-The seeded backend policy includes Task Manager, Zalo, Messenger, ChatGPT, Claude, and Gemini-related blocking rules.
-
-## Step 4: Run TeacherForm
-
-Start TeacherForm:
-
-```powershell
-dotnet run --project desktop\TeacherForm\TeacherForm.csproj
-```
-
-Inside TeacherForm:
-
-1. Enter backend URL `http://127.0.0.1:8081` for local work or `https://project1.titv.vn` after Hostinger deployment.
-2. Login with `teacher / teacher123`.
-3. Click `Refresh Sessions` to load backend sessions.
-4. Select the session `EXAM-001 | Default Exam Session | draft` or use backend session id `1`.
-5. Click `Backend Start` if you want the backend lifecycle to move to `running`.
-6. Click `Load Policy` to pull session code, token, and block rules from the backend.
-7. Click `Start Session` to start the TCP teacher server on port `9090`.
-
-TeacherForm can now:
-
-- monitor student screens
-- monitor student webcam snapshots and optional periodic webcam frames
-- send chat and attention messages
-- lock and unlock screens
-- execute commands
-- distribute files
-- broadcast teacher screen
-- send remote click, remote text, and clipboard text
-- export logs and backend session reports
-- start and finish backend exam sessions from the desktop UI
-
-## Step 5: Run StudentForm
-
-Start StudentForm:
-
-```powershell
-dotnet run --project desktop\StudentForm\StudentForm.csproj
-```
-
-Inside StudentForm:
-
-1. Click `Discover` to find the teacher on the LAN, or enter host and port manually.
-2. Confirm session `EXAM-001` and token `classroom-token`.
-3. Click `Connect`.
-4. Keep the app open during the exam.
-5. Use `Submit Folder` to send the answer folder to TeacherForm.
-
-StudentForm receives:
-
-- policy updates
-- teacher chat
-- attention popup
-- lock overlay
-- teacher screen broadcast
-- distributed files
-- remote click, text input, and clipboard updates
-
-Teacher policy also controls:
-
-- screen capture interval and JPEG quality
-- webcam enabled or disabled
-- one webcam snapshot when the student connects
-- optional periodic webcam monitoring
-
-If a webcam is unavailable or broken, the student can still stay connected and continue the exam. TeacherForm records the webcam status instead of blocking the workstation.
-
-## Step 6: Simulate multiple students locally
-
-For local testing on one machine:
-
-```powershell
-dotnet run --project desktop\StudentSimulator\StudentSimulator.csproj -- --count 5
-```
-
-This simulates five student clients sending heartbeats and screen frames to TeacherForm.
-
-## Step 7: Publish desktop release artifacts
-
-```powershell
-.\scripts\publish-desktop.ps1
-```
-
-Output folder:
+Mở:
 
 ```text
-artifacts\desktop\TeacherForm
-artifacts\desktop\StudentForm
-artifacts\desktop\StudentSimulator
+artifacts\desktop\StudentForm\StudentForm.exe
 ```
 
-## Step 8: Package backend for Hostinger
-
-After backend dependencies are installed locally:
-
-```powershell
-.\scripts\package-backend-hostinger.ps1
-```
-
-If `backend\vendor` is not available locally yet:
-
-```powershell
-.\scripts\package-backend-hostinger.ps1 -SourceOnly
-```
-
-Package output:
+Sinh viên nhập:
 
 ```text
-artifacts\backend-hostinger\backend\
-artifacts\backend-hostinger\public_html\
-artifacts\backend-hostinger\backend-hostinger.zip
+Mã phiên
+Mã bảo vệ
+Mã sinh viên
+Tên sinh viên
 ```
 
-## Local Agent Skills
+Sau đó nhấn `Tìm giáo viên` hoặc `Kết nối`.
 
-Repo-local skills live in `.codex/skills/`:
+- Nếu cùng LAN, app có thể tìm Teacher qua discovery.
+- Nếu khác mạng Wi-Fi, app lookup backend và tự kết nối đến relay VPS.
+- Student không cần nhập IP giáo viên, port giáo viên hoặc IP relay.
 
-- `project01-implementation`
-- `winforms-ui-ux`
-- `yii2-backend-database`
-- `qa-tester`
-- `security-audit`
+## Test Nhanh End-to-End
 
-## Production Notes
+1. Trên VPS chạy:
 
-- Open inbound TCP `9090` on the teacher machine firewall.
-- Keep the teacher socket on a trusted LAN only.
-- Do not expose teacher socket control ports directly to the Internet.
-- Replace `backend\config\local.php` placeholder secrets before real deployment.
-- Student file distribution lands in `Documents\ExamGuard\TeacherFiles`.
-- Teacher exports logs and reports into the app `Exports` folder.
-- Deploy only the Yii2 backend to Hostinger. TeacherForm and StudentForm still run on Windows endpoints in the exam LAN.
-- For VPS production, use Docker Compose from `docker-compose.yml` to run MySQL, backend, and the optional `relay` profile.
-- The relay service is the recommended next architecture for remote exams without public IP on the teacher machine. WebRTC/STUN/TURN should be treated as a later, larger media architecture phase.
-- Image transport between TeacherForm and StudentForm uses binary JPEG payloads over the socket. Base64 is intentionally avoided for the default path because it increases bandwidth and CPU cost.
-- For classrooms around 50 machines, start with screen interval `2000-3000 ms`, screen JPEG quality `35-45`, webcam snapshot on connect enabled, and periodic webcam interval disabled or set to `15-30 s` if needed.
+```bash
+docker compose up -d --build
+docker compose --profile tools run --rm migrate
+```
+
+2. Mở TeacherForm, đăng nhập máy chủ, mở phiên, bắt đầu phiên.
+3. Mở StudentForm, nhập mã phiên/mã bảo vệ/mã sinh viên, kết nối.
+4. Trên TeacherForm kiểm tra:
+   - Card sinh viên xuất hiện.
+   - Trạng thái `Trực tuyến`.
+   - Màn hình cập nhật.
+   - Webcam cập nhật nếu webcam khả dụng.
+5. Test nộp bài bằng file/folder. Teacher nhận file `.zip` tại Desktop:
+
+```text
+ExamGuard - Bai nop sinh vien
+```
+
+## Test 50 Student Giả Lập
+
+```powershell
+dotnet run --project desktop\StudentSimulator\StudentSimulator.csproj -- --count 50
+```
+
+Dùng để kiểm tra heartbeat, frame giả lập và tải dashboard. Test webcam thật vẫn cần máy Windows có webcam thật.
+
+## Ghi Chú Bảo Mật
+
+- Không commit `.env` thật lên Git public.
+- Không đổi `MYSQL_PUBLISHED_PORT` thành IP public VPS.
+- Chỉ public backend `8081` và relay `9090`.
+- Đổi toàn bộ secret trước production thật.
+- Không hard-code secret production lâu dài trong desktop app. Phase sau nên chuyển relay secret sang file cấu hình local được đóng gói riêng.
+- Remote command/remote input là tính năng nhạy cảm, chỉ dùng trong môi trường thi/lab có kiểm soát.
 
 ## Troubleshooting
 
-- If Hostinger returns `ExamGuard backend root is not configured.`, upload the backend to the expected sibling path or edit `public_html\index.php` to the real backend folder.
-- If Student discovery does not find the teacher, enter the teacher IP manually and verify UDP/TCP firewall rules.
-- If backend login works but policy load fails, confirm migration ran and backend session id `1` exists.
-- If remote command or remote input is blocked, run StudentForm with sufficient Windows permissions on the student machine.
+- Backend không health check được: kiểm tra `docker compose ps`, log `examguard-backend`, và port `8081`.
+- Student khác Wi-Fi không vào được: kiểm tra relay container, firewall port `9090`, và `RELAY_SHARED_SECRET`.
+- Backend lên nhưng login lỗi DB: kiểm tra `DB_PASSWORD` có khớp `MYSQL_PASSWORD` không.
+- Đổi password MySQL sau khi volume đã tồn tại không tự đổi user password trong DB cũ. Cần cập nhật trong MySQL hoặc recreate volume nếu chỉ là môi trường test.
+- Console PowerShell có thể hiển thị tiếng Việt bị mojibake; ưu tiên xem file bằng IDE/editor UTF-8.
