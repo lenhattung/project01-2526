@@ -11,7 +11,7 @@ internal sealed class BroadcastViewerForm : Form
 
     public BroadcastViewerForm()
     {
-        Text = "Màn hình giáo viên";
+        Text = "Giảng viên đang chia sẻ màn hình";
         Width = 1024;
         Height = 640;
         StartPosition = FormStartPosition.CenterScreen;

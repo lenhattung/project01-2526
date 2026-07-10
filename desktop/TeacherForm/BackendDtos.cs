@@ -7,6 +7,10 @@ internal sealed class SessionPolicyDto
     public string SessionToken { get; set; } = "";
     public List<string> BlockedProcesses { get; set; } = [];
     public List<string> BlockedWindowKeywords { get; set; } = [];
+    public List<string> BlockedAiCliTools { get; set; } = [];
+    public List<string> BlockedProxyTools { get; set; } = [];
+    public List<string> BlockedIdeExtensions { get; set; } = [];
+    public List<string> BlockedWebsiteHosts { get; set; } = [];
     public int ScreenIntervalMs { get; set; }
     public int ScreenJpegQuality { get; set; }
     public bool WebcamEnabled { get; set; }
@@ -94,4 +98,11 @@ internal sealed class SessionSubmissionSummaryDto
     public string? Status { get; set; }
     public long FileSize { get; set; }
     public string? CreatedAt { get; set; }
+}
+
+internal sealed class SessionRosterStudentDto
+{
+    public int StudentId { get; set; }
+    public string StudentCode { get; set; } = "";
+    public string FullName { get; set; } = "";
 }

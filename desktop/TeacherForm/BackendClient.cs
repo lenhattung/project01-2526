@@ -98,6 +98,10 @@ internal sealed class BackendClient
             {
                 blockedProcesses = policy.BlockedProcesses,
                 blockedWindowKeywords = policy.BlockedWindowKeywords,
+                blockedAiCliTools = policy.BlockedAiCliTools,
+                blockedProxyTools = policy.BlockedProxyTools,
+                blockedIdeExtensions = policy.BlockedIdeExtensions,
+                blockedWebsiteHosts = policy.BlockedWebsiteHosts,
                 screenIntervalMs = policy.ScreenIntervalMs,
                 screenJpegQuality = policy.ScreenJpegQuality,
                 webcamEnabled = policy.WebcamEnabled,
@@ -239,6 +243,18 @@ internal sealed class BackendClient
             cancellationToken);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<ExamSessionSummaryDto>(cancellationToken: cancellationToken);
+    }
+
+    public async Task<List<SessionRosterStudentDto>> GetSessionRosterAsync(int examSessionId, CancellationToken cancellationToken = default)
+    {
+        if (!IsAuthenticated || examSessionId <= 0)
+        {
+            return [];
+        }
+
+        return await _httpClient.GetFromJsonAsync<List<SessionRosterStudentDto>>(
+            $"{_baseUrl}/api/exam-sessions/{examSessionId}/roster",
+            cancellationToken) ?? [];
     }
 
     private static string? ParseIpAddress(string remoteEndPoint)

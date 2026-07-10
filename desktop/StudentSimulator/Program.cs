@@ -20,7 +20,8 @@ await Task.WhenAll(tasks);
 
 static async Task RunStudentAsync(Options options, int index, CancellationToken cancellationToken)
 {
-    string studentId = $"{options.Prefix}{index:000}";
+    string studentId = options.DuplicateCode ? $"{options.Prefix}001" : $"{options.Prefix}{index:000}";
+    string connectionId = Guid.NewGuid().ToString("N");
     try
     {
         using TcpClient client = new();
@@ -33,25 +34,30 @@ static async Task RunStudentAsync(Options options, int index, CancellationToken 
             FramedSocketProtocol.CreateEnvelope(MessageType.Hello, options.Session, studentId, $"SIM-PC-{index:000}", new()
             {
                 ["token"] = options.Token,
+                ["connectionId"] = connectionId,
+                ["studentCode"] = studentId,
+                ["studentName"] = $"Simulated Student {index:000}",
+                ["machineName"] = $"SIM-PC-{index:000}",
                 ["os"] = "StudentSimulator"
-            }),
+            }, connectionId),
             null,
             cancellationToken);
 
         _ = Task.Run(() => ReceiveLoopAsync(stream, studentId, cancellationToken), cancellationToken);
+        await SendWebcamDevicesAsync(stream, options.Session, studentId, connectionId, cancellationToken);
 
         while (!cancellationToken.IsCancellationRequested)
         {
             await FramedSocketProtocol.SendAsync(
                 stream,
-                FramedSocketProtocol.CreateEnvelope(MessageType.Heartbeat, options.Session, studentId, $"SIM-PC-{index:000}"),
+                FramedSocketProtocol.CreateEnvelope(MessageType.Heartbeat, options.Session, studentId, $"SIM-PC-{index:000}", connectionId: connectionId),
                 null,
                 cancellationToken);
 
             byte[] jpeg = GenerateFrame(studentId);
             await FramedSocketProtocol.SendAsync(
                 stream,
-                FramedSocketProtocol.CreateEnvelope(MessageType.ScreenFrame, options.Session, studentId, $"SIM-PC-{index:000}"),
+                FramedSocketProtocol.CreateEnvelope(MessageType.ScreenFrame, options.Session, studentId, $"SIM-PC-{index:000}", connectionId: connectionId),
                 jpeg,
                 cancellationToken);
 
@@ -60,7 +66,7 @@ static async Task RunStudentAsync(Options options, int index, CancellationToken 
                 byte[] webcam = GenerateWebcamFrame(studentId);
                 await FramedSocketProtocol.SendAsync(
                     stream,
-                    FramedSocketProtocol.CreateEnvelope(MessageType.WebcamFrame, options.Session, studentId, $"SIM-PC-{index:000}"),
+                    FramedSocketProtocol.CreateEnvelope(MessageType.WebcamFrame, options.Session, studentId, $"SIM-PC-{index:000}", new() { ["cameraId"] = "camera-0" }, connectionId),
                     webcam,
                     cancellationToken);
                 nextWebcamFrameAtUtc = DateTime.UtcNow.AddMilliseconds(options.WebcamIntervalMs);
@@ -76,6 +82,28 @@ static async Task RunStudentAsync(Options options, int index, CancellationToken 
     {
         Console.WriteLine($"{studentId} failed: {ex.Message}");
     }
+}
+
+static Task SendWebcamDevicesAsync(NetworkStream stream, string session, string studentId, string connectionId, CancellationToken cancellationToken)
+{
+    return FramedSocketProtocol.SendAsync(
+        stream,
+        FramedSocketProtocol.CreateEnvelope(MessageType.WebcamDevices, session, studentId, Environment.MachineName, new()
+        {
+            ["count"] = "2",
+            ["camera.0.id"] = "camera-0",
+            ["camera.0.index"] = "0",
+            ["camera.0.name"] = "Simulator Camera 0",
+            ["camera.0.available"] = "1",
+            ["camera.0.status"] = "available",
+            ["camera.1.id"] = "camera-1",
+            ["camera.1.index"] = "1",
+            ["camera.1.name"] = "Simulator Virtual Camera",
+            ["camera.1.available"] = "1",
+            ["camera.1.status"] = "available"
+        }, connectionId),
+        null,
+        cancellationToken);
 }
 
 static async Task ReceiveLoopAsync(NetworkStream stream, string studentId, CancellationToken cancellationToken)
@@ -140,7 +168,7 @@ static byte[] GenerateWebcamFrame(string studentId)
     return output.ToArray();
 }
 
-internal sealed record Options(string Host, int Port, string Session, string Token, int Count, string Prefix, int WebcamIntervalMs)
+internal sealed record Options(string Host, int Port, string Session, string Token, int Count, string Prefix, int WebcamIntervalMs, bool DuplicateCode)
 {
     public static Options Parse(string[] args)
     {
@@ -157,6 +185,7 @@ internal sealed record Options(string Host, int Port, string Session, string Tok
             GetValue("--token", "classroom-token"),
             int.Parse(GetValue("--count", "5")),
             GetValue("--prefix", "SIM"),
-            int.Parse(GetValue("--webcam-interval-ms", GetValue("--webcam-interval", "500"))));
+            int.Parse(GetValue("--webcam-interval-ms", GetValue("--webcam-interval", "500"))),
+            args.Contains("--duplicate-code"));
     }
 }

@@ -49,6 +49,7 @@ class SessionAccessController extends Controller
         $rules = BlockedApp::find()
             ->where(['exam_session_id' => $session->id, 'is_active' => 1])
             ->all();
+        $rulesByType = $this->rulesByType($rules);
 
         return [
             'sessionId' => (int)$session->id,
@@ -79,15 +80,23 @@ class SessionAccessController extends Controller
             'allowSubmissionAfterDeadline' => (bool)$session->allow_submission_after_deadline,
             'startedAtUtc' => $session->started_at ? gmdate('c', strtotime($session->started_at . ' UTC')) : null,
             'examEndAtUtc' => $this->computeExamEndAt($session),
-            'blockedProcesses' => array_values(array_map(
-                fn(BlockedApp $rule) => $rule->pattern,
-                array_filter($rules, fn(BlockedApp $rule) => $rule->rule_type === 'process')
-            )),
-            'blockedWindowKeywords' => array_values(array_map(
-                fn(BlockedApp $rule) => $rule->pattern,
-                array_filter($rules, fn(BlockedApp $rule) => $rule->rule_type === 'window_title')
-            )),
+            'blockedProcesses' => $rulesByType['process'] ?? [],
+            'blockedWindowKeywords' => $rulesByType['window_title'] ?? [],
+            'blockedAiCliTools' => $rulesByType['ai_cli'] ?? [],
+            'blockedProxyTools' => $rulesByType['proxy_tool'] ?? [],
+            'blockedIdeExtensions' => $rulesByType['ide_extension'] ?? [],
+            'blockedWebsiteHosts' => $rulesByType['website_host'] ?? [],
         ];
+    }
+
+    private function rulesByType(array $rules): array
+    {
+        $grouped = [];
+        foreach ($rules as $rule) {
+            $grouped[$rule->rule_type][] = $rule->pattern;
+        }
+
+        return $grouped;
     }
 
     private function computeExamEndAt(ExamSession $session): ?string

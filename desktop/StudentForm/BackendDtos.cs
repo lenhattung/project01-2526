@@ -29,4 +29,8 @@ internal sealed class JoinSessionLookupDto
     public List<string> AllowedWebsiteHosts { get; set; } = [];
     public List<string> BlockedProcesses { get; set; } = [];
     public List<string> BlockedWindowKeywords { get; set; } = [];
+    public List<string> BlockedAiCliTools { get; set; } = [];
+    public List<string> BlockedProxyTools { get; set; } = [];
+    public List<string> BlockedIdeExtensions { get; set; } = [];
+    public List<string> BlockedWebsiteHosts { get; set; } = [];
 }

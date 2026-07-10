@@ -26,9 +26,23 @@ internal interface ITeacherSessionTransport : IAsyncDisposable
 
     Task SendRemoteTextInputAsync(string? studentId, string text);
 
+    Task SendRemoteControlStartAsync(string connectionId);
+
+    Task SendRemoteControlStopAsync(string? connectionId);
+
+    Task SendRemotePointerAsync(string connectionId, string action, double relativeX, double relativeY, string button = "", int wheelDelta = 0);
+
+    Task SendRemoteKeyAsync(string connectionId, string action, string key = "", string text = "", string modifiers = "");
+
     Task SendClipboardSetAsync(string? studentId, string text);
 
     Task SendTeacherFrameAsync(byte[] jpeg);
+
+    Task SendTeacherBroadcastStopAsync();
+
+    Task SelectWebcamAsync(string connectionId, string cameraId);
+
+    Task RequestWebcamDevicesAsync(string connectionId);
 
     Task DistributeFileAsync(string? studentId, string filePath, IProgress<int>? progress = null, CancellationToken cancellationToken = default);
 }

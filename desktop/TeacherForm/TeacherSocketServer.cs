@@ -21,6 +21,7 @@ internal sealed class TeacherSocketServer : ITeacherSessionTransport
     private readonly Action<StudentState>? _studentConnected;
     private readonly SubmissionReceiver _submissionReceiver;
     private readonly Dictionary<string, ClientContext> _clients = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _activeStudentCodes = new(StringComparer.OrdinalIgnoreCase);
     private TcpListener? _listener;
     private CancellationTokenSource? _cts;
     private string _sessionId = "";
@@ -89,6 +90,7 @@ internal sealed class TeacherSocketServer : ITeacherSessionTransport
         }
 
         _clients.Clear();
+        _activeStudentCodes.Clear();
         _log("Đã dừng phiên giám sát.");
     }
 
@@ -173,6 +175,47 @@ internal sealed class TeacherSocketServer : ITeacherSessionTransport
         });
     }
 
+    public Task SendRemoteControlStartAsync(string connectionId)
+    {
+        return SendCommandAsync(connectionId, MessageType.RemoteControlStart, new()
+        {
+            ["targetConnectionId"] = connectionId
+        });
+    }
+
+    public Task SendRemoteControlStopAsync(string? connectionId)
+    {
+        return SendCommandAsync(connectionId, MessageType.RemoteControlStop, new()
+        {
+            ["targetConnectionId"] = connectionId ?? ""
+        });
+    }
+
+    public Task SendRemotePointerAsync(string connectionId, string action, double relativeX, double relativeY, string button = "", int wheelDelta = 0)
+    {
+        return SendCommandAsync(connectionId, MessageType.RemotePointer, new()
+        {
+            ["targetConnectionId"] = connectionId,
+            ["action"] = action,
+            ["relativeX"] = relativeX.ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture),
+            ["relativeY"] = relativeY.ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture),
+            ["button"] = button,
+            ["wheelDelta"] = wheelDelta.ToString()
+        });
+    }
+
+    public Task SendRemoteKeyAsync(string connectionId, string action, string key = "", string text = "", string modifiers = "")
+    {
+        return SendCommandAsync(connectionId, MessageType.RemoteKey, new()
+        {
+            ["targetConnectionId"] = connectionId,
+            ["action"] = action,
+            ["key"] = key,
+            ["text"] = text,
+            ["modifiers"] = modifiers
+        });
+    }
+
     public Task SendClipboardSetAsync(string? studentId, string text)
     {
         return SendCommandAsync(studentId, MessageType.ClipboardSet, new()
@@ -187,6 +230,30 @@ internal sealed class TeacherSocketServer : ITeacherSessionTransport
         {
             ["mode"] = "broadcast"
         }, jpeg);
+    }
+
+    public Task SendTeacherBroadcastStopAsync()
+    {
+        return SendCommandAsync(null, MessageType.TeacherBroadcastStop, new()
+        {
+            ["mode"] = "broadcast"
+        });
+    }
+
+    public Task SelectWebcamAsync(string connectionId, string cameraId)
+    {
+        return SendCommandAsync(connectionId, MessageType.WebcamSelect, new()
+        {
+            ["cameraId"] = cameraId
+        });
+    }
+
+    public Task RequestWebcamDevicesAsync(string connectionId)
+    {
+        return SendCommandAsync(connectionId, MessageType.WebcamDevices, new()
+        {
+            ["request"] = "rescan"
+        });
     }
 
     public async Task DistributeFileAsync(string? studentId, string filePath, IProgress<int>? progress = null, CancellationToken cancellationToken = default)
@@ -300,10 +367,36 @@ internal sealed class TeacherSocketServer : ITeacherSessionTransport
                 return;
             }
 
+            string connectionId = ResolveConnectionId(hello.Envelope);
             string studentCode = hello.Envelope.Metadata.GetValueOrDefault("studentCode", hello.Envelope.StudentId);
+            string normalizedCode = NormalizeStudentCode(studentCode);
+            if (string.IsNullOrWhiteSpace(normalizedCode))
+            {
+                studentCode = connectionId;
+                normalizedCode = NormalizeStudentCode(studentCode);
+            }
+
+            if (_activeStudentCodes.TryGetValue(normalizedCode, out string? activeConnectionId) &&
+                _clients.TryGetValue(activeConnectionId, out ClientContext? activeClient) &&
+                activeClient.State.IsOnline)
+            {
+                await FramedSocketProtocol.SendAsync(
+                    stream,
+                    FramedSocketProtocol.CreateEnvelope(MessageType.Error, _sessionId, studentCode, metadata: new()
+                    {
+                        ["code"] = "DUPLICATE_STUDENT",
+                        ["message"] = $"Mã sinh viên {studentCode} đang đăng nhập trên máy khác."
+                    }, connectionId: connectionId),
+                    null,
+                    cancellationToken);
+                _log($"Từ chối kết nối trùng mã sinh viên {studentCode} từ {remote}.");
+                return;
+            }
+
             StudentState state = new()
             {
-                StudentId = hello.Envelope.StudentId,
+                ConnectionId = connectionId,
+                StudentId = studentCode,
                 StudentCode = studentCode,
                 StudentName = hello.Envelope.Metadata.GetValueOrDefault("studentName", ""),
                 WindowsUserName = hello.Envelope.Metadata.GetValueOrDefault("windowsUserName", ""),
@@ -312,18 +405,9 @@ internal sealed class TeacherSocketServer : ITeacherSessionTransport
                 IsOnline = true
             };
 
-            if (_clients.TryGetValue(state.StudentId, out ClientContext? existing))
-            {
-                existing.State.IsOnline = false;
-                existing.State.LastViolation = "Kết nối cũ đã được thay thế.";
-                _studentChanged(existing.State);
-                existing.Dispose();
-                _clients.Remove(state.StudentId);
-                _log($"{existing.State.DisplayName} đã thay thế kết nối cũ.");
-            }
-
             context = new ClientContext(tcpClient, stream, state, _sessionId);
-            _clients[state.StudentId] = context;
+            _clients[state.TransportId] = context;
+            _activeStudentCodes[normalizedCode] = state.TransportId;
             _studentChanged(state);
             _studentConnected?.Invoke(state);
             _log($"{state.DisplayName} đã kết nối từ {remote}.");
@@ -340,7 +424,7 @@ internal sealed class TeacherSocketServer : ITeacherSessionTransport
                 }
 
                 if (!frame.Envelope.SessionId.Equals(_sessionId, StringComparison.OrdinalIgnoreCase) ||
-                    !frame.Envelope.StudentId.Equals(state.StudentId, StringComparison.OrdinalIgnoreCase))
+                    !ResolveConnectionId(frame.Envelope).Equals(state.TransportId, StringComparison.OrdinalIgnoreCase))
                 {
                     _log($"Bỏ qua thông điệp sai phiên hoặc sai mã sinh viên từ {remote}.");
                     continue;
@@ -366,11 +450,12 @@ internal sealed class TeacherSocketServer : ITeacherSessionTransport
                     : context.State.LastViolation;
                 _studentChanged(context.State);
                 _disconnectNotified?.Invoke(context.State, "student_disconnected", "Mất socket hoặc sinh viên đã thoát ứng dụng.");
-                _submissionReceiver.AbortStudent(_sessionId, context.State.StudentId);
-                if (_clients.TryGetValue(context.State.StudentId, out ClientContext? active) &&
+                _submissionReceiver.AbortStudent(_sessionId, context.State.StudentCodeOrId);
+                if (_clients.TryGetValue(context.State.TransportId, out ClientContext? active) &&
                     ReferenceEquals(active, context))
                 {
-                    _clients.Remove(context.State.StudentId);
+                    _clients.Remove(context.State.TransportId);
+                    _activeStudentCodes.Remove(NormalizeStudentCode(context.State.StudentCodeOrId));
                 }
 
                 _log($"{context.State.DisplayName} đã mất kết nối.");
@@ -414,12 +499,27 @@ internal sealed class TeacherSocketServer : ITeacherSessionTransport
                     client.State.LatestWebcamFrame = image;
                     client.State.LastWebcamSeen = DateTimeOffset.Now;
                     client.State.WebcamStatus = "Đang hoạt động";
+                    client.State.SelectedCameraId = frame.Envelope.Metadata.GetValueOrDefault("cameraId", client.State.SelectedCameraId);
                     old?.Dispose();
                 });
-                _studentChanged(client.State);
+                if (!client.IsRateLimited("webcam_ui", TimeSpan.FromMilliseconds(33)))
+                {
+                    _studentChanged(client.State);
+                }
                 break;
             case MessageType.WebcamStatus:
                 client.State.WebcamStatus = frame.Envelope.Metadata.GetValueOrDefault("message", "Trạng thái webcam đã được cập nhật.");
+                _studentChanged(client.State);
+                _log($"Webcam {client.State.DisplayName}: {client.State.WebcamStatus}");
+                break;
+            case MessageType.WebcamDevices:
+                client.State.WebcamDevices = ParseWebcamDevices(frame.Envelope.Metadata);
+                client.State.WebcamStatus = BuildWebcamDeviceStatus(client.State.WebcamDevices);
+                if (string.IsNullOrWhiteSpace(client.State.SelectedCameraId))
+                {
+                    client.State.SelectedCameraId = client.State.WebcamDevices.FirstOrDefault(x => x.IsAvailable)?.CameraId ?? "";
+                }
+
                 _studentChanged(client.State);
                 _log($"Webcam {client.State.DisplayName}: {client.State.WebcamStatus}");
                 break;
@@ -558,6 +658,68 @@ internal sealed class TeacherSocketServer : ITeacherSessionTransport
         return _clients.TryGetValue(studentId, out ClientContext? client) && client.State.IsOnline ? [client] : [];
     }
 
+    private static string ResolveConnectionId(SocketEnvelope envelope)
+    {
+        if (!string.IsNullOrWhiteSpace(envelope.ConnectionId))
+        {
+            return envelope.ConnectionId;
+        }
+
+        if (envelope.Metadata.TryGetValue("connectionId", out string? metadataConnectionId) &&
+            !string.IsNullOrWhiteSpace(metadataConnectionId))
+        {
+            return metadataConnectionId;
+        }
+
+        return envelope.StudentId;
+    }
+
+    private static string NormalizeStudentCode(string value)
+    {
+        return value.Trim().ToUpperInvariant();
+    }
+
+    private static List<WebcamDeviceInfo> ParseWebcamDevices(IReadOnlyDictionary<string, string> metadata)
+    {
+        int count = 0;
+        if (metadata.TryGetValue("count", out string? countValue))
+        {
+            int.TryParse(countValue, out count);
+        }
+
+        List<WebcamDeviceInfo> devices = [];
+        for (int i = 0; i < count; i++)
+        {
+            string id = metadata.GetValueOrDefault($"camera.{i}.id", "");
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                continue;
+            }
+
+            int.TryParse(metadata.GetValueOrDefault($"camera.{i}.index", "-1"), out int index);
+            bool available = metadata.GetValueOrDefault($"camera.{i}.available", "0") == "1";
+            devices.Add(new WebcamDeviceInfo(
+                id,
+                index,
+                metadata.GetValueOrDefault($"camera.{i}.name", $"Camera {index}"),
+                available,
+                metadata.GetValueOrDefault($"camera.{i}.status", available ? "available" : "unavailable")));
+        }
+
+        return devices;
+    }
+
+    private static string BuildWebcamDeviceStatus(IReadOnlyCollection<WebcamDeviceInfo> devices)
+    {
+        if (devices.Count == 0)
+        {
+            return "Không tìm thấy webcam";
+        }
+
+        int available = devices.Count(x => x.IsAvailable);
+        return $"{available}/{devices.Count} webcam khả dụng";
+    }
+
     private Task HandleSubmissionStartAsync(ClientContext client, ReceivedFrame frame)
     {
         string fileName = frame.Envelope.Metadata.GetValueOrDefault("fileName", "submission.zip");
@@ -623,9 +785,10 @@ internal sealed class TeacherSocketServer : ITeacherSessionTransport
                 SocketEnvelope envelope = FramedSocketProtocol.CreateEnvelope(
                     messageType,
                     _sessionId,
-                    State.StudentId,
+                    State.StudentCodeOrId,
                     Environment.MachineName,
-                    metadata);
+                    metadata,
+                    State.TransportId);
                 await FramedSocketProtocol.SendAsync(_stream, envelope, payload);
             }
             finally

@@ -8,6 +8,8 @@ public static class MessageType
     public const string ScreenFrame = "SCREEN_FRAME";
     public const string WebcamFrame = "WEBCAM_FRAME";
     public const string WebcamStatus = "WEBCAM_STATUS";
+    public const string WebcamDevices = "WEBCAM_DEVICES";
+    public const string WebcamSelect = "WEBCAM_SELECT";
     public const string PolicyUpdate = "POLICY_UPDATE";
     public const string ProcessViolation = "PROCESS_VIOLATION";
     public const string SubmissionStart = "SUBMISSION_START";
@@ -28,8 +30,13 @@ public static class MessageType
     public const string FileDistributionChunk = "FILE_DISTRIBUTION_CHUNK";
     public const string FileDistributionComplete = "FILE_DISTRIBUTION_COMPLETE";
     public const string TeacherFrame = "TEACHER_FRAME";
+    public const string TeacherBroadcastStop = "TEACHER_BROADCAST_STOP";
     public const string RemoteMouseClick = "REMOTE_MOUSE_CLICK";
     public const string RemoteTextInput = "REMOTE_TEXT_INPUT";
+    public const string RemoteControlStart = "REMOTE_CONTROL_START";
+    public const string RemoteControlStop = "REMOTE_CONTROL_STOP";
+    public const string RemotePointer = "REMOTE_POINTER";
+    public const string RemoteKey = "REMOTE_KEY";
     public const string ClipboardSet = "CLIPBOARD_SET";
     public const string StudentDisconnecting = "STUDENT_DISCONNECTING";
     public const string Error = "ERROR";

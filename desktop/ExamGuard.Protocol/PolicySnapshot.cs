@@ -4,10 +4,45 @@ public sealed class PolicySnapshot
 {
     public List<string> BlockedProcesses { get; set; } = new()
     {
+        "discord",
+        "telegram",
+        "whatsapp",
         "zalo",
         "messenger",
         "chatgpt",
         "claude"
+    };
+
+    public List<string> BlockedAiCliTools { get; set; } = new()
+    {
+        "codex",
+        "claude",
+        "openclaw",
+        "hermes",
+        "gemini",
+        "aider"
+    };
+
+    public List<string> BlockedProxyTools { get; set; } = new()
+    {
+        "clash",
+        "v2ray",
+        "xray",
+        "sing-box",
+        "proxifier",
+        "openvpn",
+        "wireguard",
+        "shadowsocks"
+    };
+
+    public List<string> BlockedIdeExtensions { get; set; } = new()
+    {
+        "codex",
+        "claude",
+        "copilot",
+        "continue",
+        "codeium",
+        "tabnine"
     };
 
     public List<string> BlockedWindowKeywords { get; set; } = new()
@@ -15,8 +50,27 @@ public sealed class PolicySnapshot
         "ChatGPT",
         "Claude",
         "Gemini",
+        "Grok",
+        "XAI",
+        "DeepSeek",
+        "Discord",
+        "Telegram",
+        "WhatsApp",
         "Messenger",
         "Zalo"
+    };
+
+    public List<string> BlockedWebsiteHosts { get; set; } = new()
+    {
+        "chatgpt.com",
+        "claude.ai",
+        "gemini.google.com",
+        "grok.com",
+        "x.ai",
+        "deepseek.com",
+        "discord.com",
+        "telegram.org",
+        "web.whatsapp.com"
     };
 
     public int ScreenIntervalMs { get; set; } = 2000;
@@ -39,7 +93,11 @@ public sealed class PolicySnapshot
         return new Dictionary<string, string>
         {
             ["blockedProcesses"] = string.Join(';', BlockedProcesses),
+            ["blockedAiCliTools"] = string.Join(';', BlockedAiCliTools),
+            ["blockedProxyTools"] = string.Join(';', BlockedProxyTools),
+            ["blockedIdeExtensions"] = string.Join(';', BlockedIdeExtensions),
             ["blockedWindowKeywords"] = string.Join(';', BlockedWindowKeywords),
+            ["blockedWebsiteHosts"] = string.Join(';', BlockedWebsiteHosts),
             ["screenIntervalMs"] = ScreenIntervalMs.ToString(),
             ["screenJpegQuality"] = ScreenJpegQuality.ToString(),
             ["webcamEnabled"] = WebcamEnabled ? "1" : "0",
@@ -64,7 +122,11 @@ public sealed class PolicySnapshot
         return new PolicySnapshot
         {
             BlockedProcesses = Split(metadata, "blockedProcesses"),
+            BlockedAiCliTools = Split(metadata, "blockedAiCliTools"),
+            BlockedProxyTools = Split(metadata, "blockedProxyTools"),
+            BlockedIdeExtensions = Split(metadata, "blockedIdeExtensions"),
             BlockedWindowKeywords = Split(metadata, "blockedWindowKeywords"),
+            BlockedWebsiteHosts = Split(metadata, "blockedWebsiteHosts"),
             ScreenIntervalMs = ReadInt(metadata, "screenIntervalMs", 2000, 250, 10000),
             ScreenJpegQuality = ReadInt(metadata, "screenJpegQuality", 40, 20, 85),
             WebcamEnabled = ReadBool(metadata, "webcamEnabled", true),

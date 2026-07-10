@@ -10,6 +10,7 @@ internal sealed class StudentSocketClient : IAsyncDisposable
     private readonly string _windowsUserName;
     private readonly string _sessionId;
     private readonly string _sessionToken;
+    private readonly string _connectionId = Guid.NewGuid().ToString("N");
     private readonly Action<PolicySnapshot> _policyChanged;
     private readonly Func<ReceivedFrame, Task> _frameReceived;
     private readonly Action<string> _log;
@@ -51,6 +52,7 @@ internal sealed class StudentSocketClient : IAsyncDisposable
     }
 
     public bool IsConnected => _tcpClient?.Connected == true;
+    public string ConnectionId => _connectionId;
 
     public async Task ConnectAsync(string host, int port)
     {
@@ -62,6 +64,7 @@ internal sealed class StudentSocketClient : IAsyncDisposable
         Dictionary<string, string> metadata = new()
         {
             ["token"] = _sessionToken,
+            ["connectionId"] = _connectionId,
             ["os"] = Environment.OSVersion.ToString(),
             ["studentCode"] = _studentId,
             ["studentName"] = _studentName,
@@ -98,7 +101,33 @@ internal sealed class StudentSocketClient : IAsyncDisposable
 
     public Task SendScreenFrameAsync(byte[] jpeg) => SendAsync(MessageType.ScreenFrame, payload: jpeg);
 
-    public Task SendWebcamFrameAsync(byte[] jpeg) => SendAsync(MessageType.WebcamFrame, payload: jpeg);
+    public Task SendWebcamFrameAsync(byte[] jpeg, string cameraId = "")
+    {
+        Dictionary<string, string>? metadata = string.IsNullOrWhiteSpace(cameraId)
+            ? null
+            : new Dictionary<string, string> { ["cameraId"] = cameraId };
+        return SendAsync(MessageType.WebcamFrame, metadata, jpeg);
+    }
+
+    public Task SendWebcamDevicesAsync(IReadOnlyList<WebcamDeviceDescriptor> devices)
+    {
+        Dictionary<string, string> metadata = new()
+        {
+            ["count"] = devices.Count.ToString()
+        };
+
+        for (int i = 0; i < devices.Count; i++)
+        {
+            WebcamDeviceDescriptor device = devices[i];
+            metadata[$"camera.{i}.id"] = device.CameraId;
+            metadata[$"camera.{i}.index"] = device.CameraIndex.ToString();
+            metadata[$"camera.{i}.name"] = device.DisplayName;
+            metadata[$"camera.{i}.available"] = device.IsAvailable ? "1" : "0";
+            metadata[$"camera.{i}.status"] = device.Status;
+        }
+
+        return SendAsync(MessageType.WebcamDevices, metadata);
+    }
 
     public Task SendWebcamStatusAsync(string status, string message)
     {
@@ -256,6 +285,16 @@ internal sealed class StudentSocketClient : IAsyncDisposable
                 }
                 else if (frame.Envelope.MessageType == MessageType.Error)
                 {
+                    string code = frame.Envelope.Metadata.GetValueOrDefault("code", "");
+                    if (code.Equals("DUPLICATE_STUDENT", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string message = frame.Envelope.Metadata.GetValueOrDefault("message", "May giao vien tra ve loi.");
+                        _log(message);
+                        await DisconnectAsync();
+                        _connectionClosed(message);
+                        return;
+                    }
+
                     _log(frame.Envelope.Metadata.GetValueOrDefault("message", "Máy giáo viên trả về lỗi."));
                 }
                 else
@@ -293,7 +332,7 @@ internal sealed class StudentSocketClient : IAsyncDisposable
         {
             await FramedSocketProtocol.SendAsync(
                 _stream,
-                FramedSocketProtocol.CreateEnvelope(messageType, _sessionId, _studentId, Environment.MachineName, metadata),
+                FramedSocketProtocol.CreateEnvelope(messageType, _sessionId, _studentId, Environment.MachineName, metadata, _connectionId),
                 payload,
                 cancellationToken);
         }

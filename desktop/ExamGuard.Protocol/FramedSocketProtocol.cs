@@ -77,12 +77,14 @@ public static class FramedSocketProtocol
         string sessionId,
         string studentId = "",
         string machineName = "",
-        Dictionary<string, string>? metadata = null)
+        Dictionary<string, string>? metadata = null,
+        string connectionId = "")
     {
         return new SocketEnvelope
         {
             MessageType = messageType,
             SessionId = sessionId,
+            ConnectionId = string.IsNullOrWhiteSpace(connectionId) ? studentId : connectionId,
             StudentId = studentId,
             MachineName = machineName,
             Metadata = metadata ?? new Dictionary<string, string>()

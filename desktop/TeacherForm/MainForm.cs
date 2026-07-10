@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Media;
+using System.Diagnostics;
 using ExamGuard.Protocol;
 
 namespace TeacherForm;
@@ -15,17 +16,21 @@ public sealed class MainForm : Form
     private readonly NumericUpDown _relayPortInput = new() { Minimum = 1024, Maximum = 65535, Value = 9090, Width = 90 };
     private readonly TextBox _relaySecretText = new() { Text = "Da39qVAylFO0Gl4kVxMHm1CWz7JB9z_VUUl2wBMjCudY1or4i-Oyofmb_c1gyGgV", Width = 220, UseSystemPasswordChar = true };
 
-    private readonly NumericUpDown _screenIntervalInput = new() { Minimum = 250, Maximum = 10000, Value = 2000, Width = 90 };
-    private readonly NumericUpDown _screenQualityInput = new() { Minimum = 20, Maximum = 85, Value = 40, Width = 80 };
+    private readonly NumericUpDown _screenIntervalInput = new() { Minimum = 120, Maximum = 10000, Value = 500, Width = 90 };
+    private readonly NumericUpDown _screenQualityInput = new() { Minimum = 20, Maximum = 85, Value = 58, Width = 80 };
     private readonly CheckBox _webcamEnabledCheck = new() { Text = "Theo dõi webcam", Checked = true, AutoSize = true };
     private readonly CheckBox _webcamSnapshotCheck = new() { Text = "Chụp ảnh khi vào", Checked = true, AutoSize = true };
-    private readonly NumericUpDown _webcamIntervalInput = new() { Minimum = 0, Maximum = 10000, Value = 500, Width = 90 };
-    private readonly NumericUpDown _webcamQualityInput = new() { Minimum = 25, Maximum = 90, Value = 55, Width = 80 };
+    private readonly NumericUpDown _webcamIntervalInput = new() { Minimum = 0, Maximum = 10000, Value = 33, Width = 90 };
+    private readonly NumericUpDown _webcamQualityInput = new() { Minimum = 25, Maximum = 90, Value = 42, Width = 80 };
     private readonly NumericUpDown _examDurationMinutesInput = new() { Minimum = 0, Maximum = 1440, Value = 0, Width = 90 };
     private readonly CheckBox _allowLateSubmissionCheck = new() { Text = "Cho phép nộp sau khi hết giờ", AutoSize = true };
     private readonly CheckBox _blockClipboardCheck = new() { Text = "Chặn copy/paste", Checked = true, AutoSize = true };
     private readonly TextBox _blockedProcessesText = new() { Text = "zalo;messenger;chatgpt;claude", Width = 320 };
+    private readonly TextBox _blockedAiCliText = new() { Text = "codex;claude;openclaw;hermes;gemini;aider", Width = 320 };
+    private readonly TextBox _blockedProxyToolsText = new() { Text = "clash;v2ray;xray;sing-box;proxifier;openvpn;wireguard;shadowsocks", Width = 320 };
+    private readonly TextBox _blockedIdeExtensionsText = new() { Text = "codex;claude;copilot;continue;codeium;tabnine", Width = 320 };
     private readonly TextBox _blockedKeywordsText = new() { Text = "ChatGPT;Claude;Gemini;Messenger;Zalo", Width = 320 };
+    private readonly TextBox _blockedWebsitesText = new() { Text = "chatgpt.com;claude.ai;gemini.google.com;grok.com;x.ai;deepseek.com;discord.com;telegram.org;web.whatsapp.com", Width = 320 };
     private readonly TextBox _allowedWebsitesText = new() { Text = "dntu.edu.vn", Width = 320 };
 
     private readonly TextBox _backendUrlText = new() { Text = "http://103.180.138.225:8081", Width = 210 };
@@ -58,29 +63,58 @@ public sealed class MainForm : Form
     private readonly PictureBox _webcamFrame = new() { Dock = DockStyle.Fill, SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.Black };
     private readonly Label _detailStatusLabel = new() { Dock = DockStyle.Bottom, Height = 28, TextAlign = ContentAlignment.MiddleCenter, Text = "Màn hình: chưa chọn sinh viên" };
     private readonly Label _webcamDetailStatus = new() { Dock = DockStyle.Bottom, Height = 28, TextAlign = ContentAlignment.MiddleCenter, Text = "Webcam: chưa chọn sinh viên" };
+    private readonly Label _webcamInventoryLabel = new()
+    {
+        AutoSize = false,
+        Dock = DockStyle.Fill,
+        Height = 24,
+        TextAlign = ContentAlignment.MiddleLeft,
+        Text = "Chưa có camera",
+        Margin = new Padding(0, 6, 0, 0),
+        AutoEllipsis = true
+    };
+    private readonly ComboBox _studentWebcamPicker = new() { Visible = false };
+    private readonly Button _refreshStudentWebcamsButton = new() { Visible = false };
     private readonly ListBox _eventLog = new() { Dock = DockStyle.Fill };
     private readonly TextBox _chatHistoryText = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical };
     private readonly TextBox _selectedStudentInfoText = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical };
+    private readonly ListView _historySessionsList = new() { View = View.Details, FullRowSelect = true, HideSelection = false, Dock = DockStyle.Fill };
+    private readonly PictureBox _historyStartImage = new() { Dock = DockStyle.Fill, SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.WhiteSmoke };
+    private readonly PictureBox _historyEndImage = new() { Dock = DockStyle.Fill, SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.WhiteSmoke };
+    private readonly TextBox _historyDetailsText = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical };
     private readonly Label _mosaicEmptyLabel = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, Text = "Chưa có sinh viên kết nối", Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold, GraphicsUnit.Point) };
     private readonly Label _statusLabel = new() { AutoSize = true, Text = "Đã dừng" };
     private readonly Label _backendStatusLabel = new() { AutoSize = true, Text = "Máy chủ: chưa kết nối" };
     private readonly Label _targetScopeLabel = new() { AutoSize = true, Text = "Phạm vi: toàn bộ sinh viên" };
     private readonly Label _sessionQuickLabel = new() { AutoSize = true, Text = "Phiên: EXAM-001" };
     private readonly Label _studentCountLabel = new() { AutoSize = true, Text = "Sinh viên: 0" };
+    private readonly Button _remoteControlToggleButton = new() { Text = "Điều khiển máy SV", Width = 150, Tag = "mouse-pointer" };
+    private readonly Button _remoteControlToggleButton2 = new() { Text = "Điều khiển máy SV", Width = 150, Tag = "mouse-pointer" };
+    private readonly Button _teacherBroadcastToggleButton = new() { Text = "Chia sẻ màn hình GV", Width = 170, Tag = "cast" };
+    private readonly Button _trayModeButton = new() { Text = "Chạy ngầm: Tắt", Width = 145, Tag = "wifi" };
 
     private readonly Dictionary<string, StudentCard> _cards = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, StudentState> _studentStates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, SessionRosterStudentDto> _sessionRoster = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, FloatingImageViewerForm> _liveViewers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, WorkspaceChildForm> _workspacePages = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Panel> _accordionBodies = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Button> _sidebarButtons = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Control> _accordionSections = new(StringComparer.OrdinalIgnoreCase);
     private readonly BackendClient _backendClient = new();
+    private readonly SessionHistoryStore _sessionHistory;
     private readonly System.Windows.Forms.Timer _teacherBroadcastTimer = new() { Interval = 1500 };
     private readonly System.Windows.Forms.Timer _sessionAccessRefreshTimer = new() { Interval = 15000 };
     private readonly TeacherDiscoveryBroadcaster _discoveryBroadcaster;
     private DateTimeOffset? _sessionStartedAtUtc;
     private ITeacherSessionTransport? _server;
     private FloatingChatForm? _chatPopup;
+    private NotifyIcon? _trayIcon;
+    private bool _allowExit;
+    private bool _trayModeEnabled;
+    private bool _remoteControlEnabled;
+    private string? _remoteControlTargetId;
+    private DateTime _lastRemoteMoveSentAt = DateTime.MinValue;
 
     public MainForm()
     {
@@ -91,6 +125,7 @@ public sealed class MainForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         IsMdiContainer = true;
         AppIcons.SetFormIcon(this, "shield");
+        _sessionHistory = new SessionHistoryStore(this);
 
         _discoveryBroadcaster = new TeacherDiscoveryBroadcaster(message => BeginInvoke(() => Log(message)));
         _connectionModePicker.Items.AddRange(["Cùng mạng LAN", "Qua máy chủ relay"]);
@@ -100,9 +135,15 @@ public sealed class MainForm : Form
         _sessionAccessRefreshTimer.Tick += async (_, _) => await RefreshPublishedAccessAsync();
 
         ConfigureStudentsList();
+        ConfigureHistoryList();
         ConfigureContextMenus();
+        _mosaicPanel.SizeChanged += (_, _) => ResizeMosaicCards();
         _teacherBroadcastTimer.Tick += async (_, _) => await BroadcastTeacherFrameAsync();
+        _backendSessionPicker.SelectedIndexChanged += (_, _) => _ = RefreshSessionRosterAsync();
+        _trayModeButton.Click += (_, _) => ToggleTrayMode();
         HandleConnectionModeChanged();
+        UpdateTeacherBroadcastButton();
+        InitializeTrayIcon();
 
         Controls.Add(BuildBottomDockPanel());
         Controls.Add(BuildRightDockPanel());
@@ -112,10 +153,19 @@ public sealed class MainForm : Form
         UpdateMosaicEmptyState();
         UiTheme.Apply(this);
         Shown += (_, _) => ShowWorkspacePage("dashboard");
-        FormClosing += async (_, _) =>
+        FormClosing += async (_, e) =>
         {
+            if (e.CloseReason == CloseReason.UserClosing && !_allowExit && _trayModeEnabled)
+            {
+                e.Cancel = true;
+                HideToTray();
+                return;
+            }
+
             _teacherBroadcastTimer.Stop();
+            _sessionHistory.AppendAudit("teacher_broadcast_stop", null, "Stopped teacher screen broadcast.");
             _sessionAccessRefreshTimer.Stop();
+            _trayIcon?.Dispose();
             await _discoveryBroadcaster.DisposeAsync();
             if (_server is not null)
             {
@@ -142,19 +192,109 @@ public sealed class MainForm : Form
         _studentsList.SelectedIndexChanged += (_, _) => ShowSelectedStudent();
     }
 
+    private void ConfigureHistoryList()
+    {
+        _historySessionsList.Columns.Add("Phiên", 150);
+        _historySessionsList.Columns.Add("Bắt đầu", 135);
+        _historySessionsList.Columns.Add("Kết thúc", 135);
+        _historySessionsList.Columns.Add("SV", 55);
+        _historySessionsList.Columns.Add("Vi phạm", 70);
+        _historySessionsList.Columns.Add("Máy GV", 120);
+        _historySessionsList.SelectedIndexChanged += (_, _) => ShowSelectedHistoryEntry();
+    }
+
+    private void InitializeTrayIcon()
+    {
+        ContextMenuStrip menu = new();
+        menu.Items.Add("Mở lại", null, (_, _) => RestoreFromTray());
+        menu.Items.Add("Tắt chạy ngầm", null, (_, _) =>
+        {
+            _trayModeEnabled = false;
+            UpdateTrayModeUi();
+            RestoreFromTray();
+        });
+        menu.Items.Add("Thoát hẳn", null, (_, _) =>
+        {
+            _allowExit = true;
+            _trayIcon?.Dispose();
+            Close();
+        });
+
+        _trayIcon = new NotifyIcon
+        {
+            Text = "ExamGuard - Máy giáo viên",
+            Icon = Icon,
+            Visible = false,
+            ContextMenuStrip = menu
+        };
+        _trayIcon.DoubleClick += (_, _) => RestoreFromTray();
+        UpdateTrayModeUi();
+    }
+
+    private void ToggleTrayMode()
+    {
+        _trayModeEnabled = !_trayModeEnabled;
+        UpdateTrayModeUi();
+        Log(_trayModeEnabled
+            ? "Đã bật chế độ chạy ngầm."
+            : "Đã tắt chế độ chạy ngầm.");
+
+        if (_trayModeEnabled)
+        {
+            HideToTray();
+        }
+    }
+
+    private void UpdateTrayModeUi()
+    {
+        _trayModeButton.Text = _trayModeEnabled ? "Chạy ngầm: Bật" : "Chạy ngầm: Tắt";
+        if (_trayIcon?.ContextMenuStrip is { Items.Count: >= 2 } menu)
+        {
+            menu.Items[1].Visible = _trayModeEnabled;
+        }
+    }
+
+    private void HideToTray()
+    {
+        if (_trayIcon is null || !_trayModeEnabled)
+        {
+            return;
+        }
+
+        ShowInTaskbar = false;
+        Hide();
+        _trayIcon.Visible = true;
+    }
+
+    private void RestoreFromTray()
+    {
+        if (_trayIcon is not null)
+        {
+            _trayIcon.Visible = false;
+        }
+
+        ShowInTaskbar = true;
+        Show();
+        WindowState = FormWindowState.Normal;
+        BringToFront();
+        Activate();
+    }
+
     private void ConfigureContextMenus()
     {
         ContextMenuStrip screenMenu = BuildImageContextMenu("screen");
         ContextMenuStrip webcamMenu = BuildImageContextMenu("webcam");
         _detailFrame.ContextMenuStrip = screenMenu;
         _webcamFrame.ContextMenuStrip = webcamMenu;
-        _detailFrame.MouseClick += async (_, e) =>
-        {
-            if (e.Button == MouseButtons.Left)
-            {
-                await SendRemoteMouseClickAsync(e);
-            }
-        };
+        _detailFrame.TabStop = true;
+        _detailFrame.MouseDown += async (_, e) => await SendRemotePointerAsync("down", e);
+        _detailFrame.MouseUp += async (_, e) => await SendRemotePointerAsync("up", e);
+        _detailFrame.MouseMove += async (_, e) => await SendRemoteMoveAsync(e);
+        _detailFrame.MouseWheel += async (_, e) => await SendRemoteWheelAsync(e);
+        _detailFrame.KeyPress += async (_, e) => await SendRemoteTextKeyAsync(e.KeyChar);
+        _detailFrame.KeyDown += async (_, e) => await SendRemoteSpecialKeyAsync("down", e);
+        _detailFrame.KeyUp += async (_, e) => await SendRemoteSpecialKeyAsync("up", e);
+        _detailFrame.PreviewKeyDown += (_, e) => e.IsInputKey = true;
     }
 
     private ContextMenuStrip BuildImageContextMenu(string streamKind)
@@ -260,6 +400,7 @@ public sealed class MainForm : Form
             Tag = "surface-flow"
         };
         statusFlow.Controls.AddRange([
+            _trayModeButton,
             StatusChip(_statusLabel, "power"),
             StatusChip(_backendStatusLabel, "server"),
             StatusChip(_studentCountLabel, "users"),
@@ -326,9 +467,10 @@ public sealed class MainForm : Form
         sidebar.Controls.Add(CreateSidebarButton("exam", "Đề thi", "folder", () => ShowWorkspacePage("distribution")));
         sidebar.Controls.Add(CreateSidebarButton("logs", "Nhật ký", "file-text", () =>
         {
-            ShowWorkspacePage("dashboard");
-            _eventLog.Focus();
-            _targetScopeLabel.Text = "Phạm vi: nhật ký sự kiện";
+            RefreshHistorySessions();
+            ShowWorkspacePage("history");
+            _historySessionsList.Focus();
+            _targetScopeLabel.Text = "Phạm vi: lịch sử phiên";
         }));
         return sidebar;
     }
@@ -393,6 +535,7 @@ public sealed class MainForm : Form
             "backend" => new WorkspaceChildForm(key, "Máy chủ", BuildSingleSectionPage(BuildBackendGroup())),
             "control" => new WorkspaceChildForm(key, "Cảnh báo", BuildSingleSectionPage(BuildControlGroup())),
             "distribution" => new WorkspaceChildForm(key, "Đề thi", BuildSingleSectionPage(BuildDistributionGroup())),
+            "history" => new WorkspaceChildForm(key, "Nhật ký", BuildHistoryWorkspacePage()),
             _ => new WorkspaceChildForm(key, "Dashboard", BuildDashboardWorkspacePage())
         };
     }
@@ -605,18 +748,25 @@ public sealed class MainForm : Form
             ColumnCount = 1,
             RowCount = 4
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 44F));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 30F));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 18F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 38F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 42F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 14F));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 8F));
 
         Panel screenPanel = new() { Dock = DockStyle.Fill };
         screenPanel.Controls.Add(_detailFrame);
         screenPanel.Controls.Add(_detailStatusLabel);
 
-        Panel webcamPanel = new() { Dock = DockStyle.Fill };
-        webcamPanel.Controls.Add(_webcamFrame);
-        webcamPanel.Controls.Add(_webcamDetailStatus);
+        TableLayoutPanel webcamPanel = new()
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2
+        };
+        webcamPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        webcamPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 52F));
+        webcamPanel.Controls.Add(_webcamFrame, 0, 0);
+        webcamPanel.Controls.Add(BuildWebcamStatusBar(), 0, 1);
 
         layout.Controls.Add(WrapCard("Màn hình đang chọn", screenPanel, "monitor"), 0, 0);
         layout.Controls.Add(WrapCard("Webcam đang chọn", webcamPanel, "video"), 0, 1);
@@ -627,6 +777,23 @@ public sealed class MainForm : Form
 
         layout.Controls.Add(WrapCard("Thông tin sinh viên", _selectedStudentInfoText, "user"), 0, 2);
         layout.Controls.Add(WrapCard("Trao đổi", chatPopupButton, "message-circle"), 0, 3);
+        return layout;
+    }
+
+    private Control BuildWebcamStatusBar()
+    {
+        TableLayoutPanel layout = new()
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Padding = new Padding(0, 4, 0, 0),
+            Margin = new Padding(0)
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
+        layout.Controls.Add(_webcamInventoryLabel, 0, 0);
+        layout.Controls.Add(_webcamDetailStatus, 0, 1);
         return layout;
     }
 
@@ -641,6 +808,53 @@ public sealed class MainForm : Form
         split.Panel1.Controls.Add(WrapCard("Danh sách sinh viên", _studentsList, "users"));
         split.Panel2.Controls.Add(WrapCard("Nhật ký sự kiện", _eventLog, "file-text"));
         return split;
+    }
+
+    private Control BuildHistoryWorkspacePage()
+    {
+        SplitContainer root = new()
+        {
+            Dock = DockStyle.Fill,
+            SplitterDistance = 510
+        };
+
+        TableLayoutPanel left = new()
+        {
+            Dock = DockStyle.Fill,
+            RowCount = 2,
+            ColumnCount = 1
+        };
+        left.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        left.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        Button refreshButton = IconButton("Tải lại lịch sử", "refresh-cw", 130);
+        refreshButton.Click += (_, _) => RefreshHistorySessions();
+        Button openFolderButton = IconButton("Mở thư mục", "folder", 110);
+        openFolderButton.Click += (_, _) => OpenSelectedHistoryFolder();
+        Button exportCsvButton = IconButton("Xuất CSV", "file-text", 95);
+        exportCsvButton.Click += (_, _) => ExportHistoryIndex("csv");
+        Button exportJsonButton = IconButton("Xuất JSON", "file-text", 100);
+        exportJsonButton.Click += (_, _) => ExportHistoryIndex("json");
+        left.Controls.Add(CreateButtonRow(refreshButton, openFolderButton, exportCsvButton, exportJsonButton), 0, 0);
+        left.Controls.Add(WrapCard("Phiên đã lưu cục bộ", _historySessionsList, "file-text"), 0, 1);
+
+        TableLayoutPanel right = new()
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Padding = new Padding(8, 0, 0, 0)
+        };
+        right.RowStyles.Add(new RowStyle(SizeType.Percent, 32F));
+        right.RowStyles.Add(new RowStyle(SizeType.Percent, 32F));
+        right.RowStyles.Add(new RowStyle(SizeType.Percent, 36F));
+        right.Controls.Add(WrapCard("Ảnh lúc bắt đầu", _historyStartImage, "monitor"), 0, 0);
+        right.Controls.Add(WrapCard("Ảnh lúc kết thúc", _historyEndImage, "monitor"), 0, 1);
+        right.Controls.Add(WrapCard("Chi tiết phiên", _historyDetailsText, "file-text"), 0, 2);
+
+        root.Panel1.Controls.Add(left);
+        root.Panel2.Controls.Add(right);
+        RefreshHistorySessions();
+        return root;
     }
 
     private GroupBox BuildControlGroup()
@@ -661,6 +875,7 @@ public sealed class MainForm : Form
         unlockButton.Click += async (_, _) => await SendUnlockAsync();
         Button typeTextButton = IconButton("Nhập văn bản", "type", 120);
         typeTextButton.Click += async (_, _) => await SendRemoteTextInputAsync();
+        _remoteControlToggleButton.Click += async (_, _) => await ToggleRemoteControlAsync();
         Button clipboardButton = IconButton("Đặt clipboard", "clipboard", 120);
         clipboardButton.Click += async (_, _) => await SendClipboardSetAsync();
         Button commandButton = IconButton("Chạy lệnh", "terminal", 105);
@@ -669,7 +884,7 @@ public sealed class MainForm : Form
         controlGrid.Controls.Add(LabelFor("Tin nhắn / ghi chú"), 0, 0);
         controlGrid.Controls.Add(_teacherMessageText, 1, 0);
         FlowLayoutPanel row1 = CreateButtonRow(chatButton, chatAllButton, clearHandButton, attentionButton, lockButton, unlockButton);
-        FlowLayoutPanel row2 = CreateButtonRow(typeTextButton, clipboardButton);
+        FlowLayoutPanel row2 = CreateButtonRow(_remoteControlToggleButton, typeTextButton, clipboardButton);
         controlGrid.Controls.Add(row1, 0, 1);
         controlGrid.SetColumnSpan(row1, 2);
         controlGrid.Controls.Add(row2, 0, 2);
@@ -691,11 +906,10 @@ public sealed class MainForm : Form
         fileButton.Click += async (_, _) => await DistributeFileAsync();
         Button folderButton = IconButton("Phát thư mục", "folder", 130);
         folderButton.Click += async (_, _) => await DistributeFolderAsync();
-        Button broadcastButton = IconButton("Phát màn hình", "cast", 130);
-        broadcastButton.Click += (_, _) => ToggleTeacherBroadcast();
+        _teacherBroadcastToggleButton.Click += (_, _) => ToggleTeacherBroadcast();
         distributionGrid.Controls.Add(LabelFor("Tiến trình"), 0, 0);
         distributionGrid.Controls.Add(_distributionProgress, 1, 0);
-        FlowLayoutPanel distributionActions = CreateButtonRow(fileButton, folderButton, broadcastButton);
+        FlowLayoutPanel distributionActions = CreateButtonRow(fileButton, folderButton, _teacherBroadcastToggleButton);
         distributionGrid.Controls.Add(distributionActions, 0, 1);
         distributionGrid.SetColumnSpan(distributionActions, 2);
         distributionBox.Controls.Add(distributionGrid);
@@ -844,8 +1058,16 @@ public sealed class MainForm : Form
         grid.Controls.Add(_blockedKeywordsText, 1, 9);
         grid.Controls.Add(LabelFor("Website được phép"), 0, 10);
         grid.Controls.Add(_allowedWebsitesText, 1, 10);
+        grid.Controls.Add(LabelFor("AI CLI bị chặn"), 0, 11);
+        grid.Controls.Add(_blockedAiCliText, 1, 11);
+        grid.Controls.Add(LabelFor("Proxy/VPN bị chặn"), 0, 12);
+        grid.Controls.Add(_blockedProxyToolsText, 1, 12);
+        grid.Controls.Add(LabelFor("Extension IDE bị chặn"), 0, 13);
+        grid.Controls.Add(_blockedIdeExtensionsText, 1, 13);
+        grid.Controls.Add(LabelFor("Website bị chặn"), 0, 14);
+        grid.Controls.Add(_blockedWebsitesText, 1, 14);
         FlowLayoutPanel actions = CreateButtonRow(sendPolicyButton, exportLogsButton);
-        grid.Controls.Add(actions, 0, 11);
+        grid.Controls.Add(actions, 0, 15);
         grid.SetColumnSpan(actions, 2);
         box.Controls.Add(grid);
         return box;
@@ -919,6 +1141,7 @@ public sealed class MainForm : Form
         unlockButton.Click += async (_, _) => await SendUnlockAsync();
         Button typeTextButton = IconButton("Nhập văn bản", "type", 120);
         typeTextButton.Click += async (_, _) => await SendRemoteTextInputAsync();
+        _remoteControlToggleButton2.Click += async (_, _) => await ToggleRemoteControlAsync();
         Button clipboardButton = IconButton("Đặt clipboard", "clipboard", 120);
         clipboardButton.Click += async (_, _) => await SendClipboardSetAsync();
         Button commandButton = IconButton("Chạy lệnh", "terminal", 105);
@@ -927,7 +1150,7 @@ public sealed class MainForm : Form
         controlGrid.Controls.Add(LabelFor("Tin nhắn / ghi chú"), 0, 0);
         controlGrid.Controls.Add(_teacherMessageText, 1, 0);
         FlowLayoutPanel row1 = CreateButtonRow(chatButton, chatAllButton, clearHandButton, attentionButton, lockButton, unlockButton);
-        FlowLayoutPanel row2 = CreateButtonRow(typeTextButton, clipboardButton);
+        FlowLayoutPanel row2 = CreateButtonRow(_remoteControlToggleButton2, typeTextButton, clipboardButton);
         controlGrid.Controls.Add(row1, 0, 1);
         controlGrid.SetColumnSpan(row1, 2);
         controlGrid.Controls.Add(row2, 0, 2);
@@ -1084,13 +1307,18 @@ public sealed class MainForm : Form
         SubmissionReceiver submissionReceiver = new(rootPath);
         string connectionMode = SelectedConnectionMode();
         await EnsureBackendSessionRunningAsync(connectionMode);
+        await RefreshSessionRosterAsync();
         if (connectionMode == "relay")
         {
             TeacherRelayClient relay = new(
                 BuildPolicy,
                 state => BeginInvoke(() => UpsertStudent(state)),
                 message => BeginInvoke(() => Log(message)),
-                (state, process, title) => _ = PostEventAsync(state, "process_violation", new { processName = process, windowTitle = title }),
+                (state, process, title) =>
+                {
+                    _sessionHistory.AppendViolation(state, "process_violation", process, title, "reported");
+                    _ = PostEventAsync(state, "process_violation", new { processName = process, windowTitle = title });
+                },
                 (state, path, sha256) => _ = PostSubmissionAsync(state, path, sha256),
                 submissionReceiver,
                 (state, message, scope) => _ = OnStudentChatAsync(state, message, scope),
@@ -1114,7 +1342,11 @@ public sealed class MainForm : Form
             BuildPolicy,
             state => BeginInvoke(() => UpsertStudent(state)),
             message => BeginInvoke(() => Log(message)),
-            (state, process, title) => _ = PostEventAsync(state, "process_violation", new { processName = process, windowTitle = title }),
+            (state, process, title) =>
+            {
+                _sessionHistory.AppendViolation(state, "process_violation", process, title, "reported");
+                _ = PostEventAsync(state, "process_violation", new { processName = process, windowTitle = title });
+            },
             (state, path, sha256) => _ = PostSubmissionAsync(state, path, sha256),
             submissionReceiver,
             (state, message, scope) => _ = OnStudentChatAsync(state, message, scope),
@@ -1128,6 +1360,7 @@ public sealed class MainForm : Form
             _discoveryBroadcaster.Start(_sessionIdText.Text.Trim(), (int)_portInput.Value);
         }
         _sessionStartedAtUtc ??= DateTimeOffset.UtcNow;
+        _sessionHistory.Start(_sessionIdText.Text.Trim(), _sessionIdText.Text.Trim());
         _statusLabel.Text = "Đang hoạt động";
         UpdateTargetScopeLabel();
         _sessionAccessRefreshTimer.Start();
@@ -1167,9 +1400,11 @@ public sealed class MainForm : Form
             return;
         }
 
+        _sessionHistory.Finish(_sessionIdText.Text.Trim(), _cards.Count);
         await _server.StopAsync();
         _server = null;
         _cards.Clear();
+        _studentStates.Clear();
         _mosaicPanel.Controls.Clear();
         foreach (FloatingImageViewerForm viewer in _liveViewers.Values.ToList())
         {
@@ -1182,9 +1417,12 @@ public sealed class MainForm : Form
         _webcamDetailStatus.Text = "Webcam: chưa chọn sinh viên";
         _statusLabel.Text = "Đã dừng";
         _teacherBroadcastTimer.Stop();
+        UpdateTeacherBroadcastButton();
         _sessionAccessRefreshTimer.Stop();
         _discoveryBroadcaster.Stop();
         _sessionStartedAtUtc = null;
+        RefreshHistorySessions();
+        _sessionHistory.Reset();
         UpdateTargetScopeLabel();
     }
 
@@ -1219,15 +1457,15 @@ public sealed class MainForm : Form
 
     private async Task SendChatAsync()
     {
-        await SendChatMessageAsync(SelectedStudentId(), _teacherMessageText.Text.Trim());
+        await SendChatMessageAsync(SelectedTransportId(), SelectedStudentCode(), _teacherMessageText.Text.Trim());
     }
 
     private async Task SendChatAllAsync()
     {
-        await SendChatMessageAsync(null, _teacherMessageText.Text.Trim());
+        await SendChatMessageAsync(null, null, _teacherMessageText.Text.Trim());
     }
 
-    private async Task SendChatMessageAsync(string? target, string message)
+    private async Task SendChatMessageAsync(string? targetTransportId, string? targetStudentCode, string message)
     {
         if (_server is null)
         {
@@ -1241,9 +1479,9 @@ public sealed class MainForm : Form
             return;
         }
 
-        await _server.SendChatAsync(target, message);
-        await _backendClient.PostChatMessageAsync(CurrentBackendSessionId(), "teacher", "teacher", target, message, target is null ? "all" : "one");
-        AppendChatHistory($"Giáo viên -> {(target ?? "Tất cả")}: {message}");
+        await _server.SendChatAsync(targetTransportId, message);
+        await _backendClient.PostChatMessageAsync(CurrentBackendSessionId(), "teacher", "teacher", targetStudentCode, message, targetTransportId is null ? "all" : "one");
+        AppendChatHistory($"Giáo viên -> {(targetStudentCode ?? "Tất cả")}: {message}");
     }
 
     private async Task ClearHandRaiseAsync()
@@ -1253,10 +1491,10 @@ public sealed class MainForm : Form
             return;
         }
 
-        await _server.SendHandRaiseClearAsync(SelectedStudentId());
-        if (SelectedStudentId() is { } studentId && _cards.TryGetValue(studentId, out StudentCard? card))
+        await _server.SendHandRaiseClearAsync(SelectedTransportId());
+        if (TryGetSelectedCard(out StudentCard? card))
         {
-            AppendChatHistory($"Đã xóa giơ tay của {card.DisplayName}.");
+            AppendChatHistory($"Đã xóa giơ tay của {card!.DisplayName}.");
         }
     }
 
@@ -1268,7 +1506,7 @@ public sealed class MainForm : Form
             return;
         }
 
-        await _server.SendAttentionAsync(SelectedStudentId(), _teacherMessageText.Text.Trim());
+        await _server.SendAttentionAsync(SelectedTransportId(), _teacherMessageText.Text.Trim());
     }
 
     private async Task SendLockAsync()
@@ -1279,7 +1517,7 @@ public sealed class MainForm : Form
             return;
         }
 
-        await _server.SendLockAsync(SelectedStudentId(), _teacherMessageText.Text.Trim());
+        await _server.SendLockAsync(SelectedTransportId(), _teacherMessageText.Text.Trim());
     }
 
     private async Task SendUnlockAsync()
@@ -1290,7 +1528,7 @@ public sealed class MainForm : Form
             return;
         }
 
-        await _server.SendUnlockAsync(SelectedStudentId());
+        await _server.SendUnlockAsync(SelectedTransportId());
     }
 
     private async Task SendCommandAsync()
@@ -1301,20 +1539,163 @@ public sealed class MainForm : Form
             return;
         }
 
-        await _server.SendExecuteCommandAsync(SelectedStudentId(), _teacherCommandText.Text.Trim());
+        await _server.SendExecuteCommandAsync(SelectedTransportId(), _teacherCommandText.Text.Trim());
     }
 
-    private async Task SendRemoteMouseClickAsync(MouseEventArgs e)
+    private async Task SendRemotePointerAsync(string action, MouseEventArgs e, int wheelDelta = 0)
     {
-        if (_server is null || SelectedStudentId() is not { } studentId || _detailFrame.Image is null)
+        if (!_remoteControlEnabled || _server is null || SelectedTransportId() is not { } studentId || _detailFrame.Image is null)
         {
             return;
         }
 
-        double relativeX = Math.Clamp(e.X / (double)Math.Max(1, _detailFrame.Width), 0, 1);
-        double relativeY = Math.Clamp(e.Y / (double)Math.Max(1, _detailFrame.Height), 0, 1);
+        if (!TryResolveZoomRelativePoint(_detailFrame, e.Location, out double relativeX, out double relativeY))
+        {
+            return;
+        }
+
         string button = e.Button == MouseButtons.Right ? "right" : "left";
-        await _server.SendRemoteMouseClickAsync(studentId, relativeX, relativeY, button);
+        await _server.SendRemotePointerAsync(studentId, action, relativeX, relativeY, button, wheelDelta);
+    }
+
+    private async Task SendRemoteMoveAsync(MouseEventArgs e)
+    {
+        if (!_remoteControlEnabled || _server is null || _detailFrame.Image is null || e.Button == MouseButtons.None)
+        {
+            return;
+        }
+
+        if ((DateTime.UtcNow - _lastRemoteMoveSentAt).TotalMilliseconds < 30)
+        {
+            return;
+        }
+
+        _lastRemoteMoveSentAt = DateTime.UtcNow;
+        await SendRemotePointerAsync("move", e);
+    }
+
+    private async Task SendRemoteWheelAsync(MouseEventArgs e)
+    {
+        await SendRemotePointerAsync("wheel", e, e.Delta);
+    }
+
+    private async Task SendRemoteSpecialKeyAsync(string action, KeyEventArgs e)
+    {
+        if (!_remoteControlEnabled || _server is null || SelectedTransportId() is not { } studentId)
+        {
+            return;
+        }
+
+        string protocolKey = ToProtocolKey(e.KeyCode);
+        if (string.IsNullOrWhiteSpace(protocolKey) && (e.Control || e.Alt) && e.KeyCode is >= Keys.A and <= Keys.Z or >= Keys.D0 and <= Keys.D9)
+        {
+            protocolKey = e.KeyCode.ToString().Replace("D", "", StringComparison.Ordinal).ToUpperInvariant();
+        }
+
+        if (string.IsNullOrWhiteSpace(protocolKey))
+        {
+            return;
+        }
+
+        await _server.SendRemoteKeyAsync(studentId, action, protocolKey, "", BuildModifiers(e));
+        e.SuppressKeyPress = true;
+        e.Handled = true;
+    }
+
+    private async Task SendRemoteTextKeyAsync(char value)
+    {
+        if (!_remoteControlEnabled || _server is null || SelectedTransportId() is not { } studentId || char.IsControl(value))
+        {
+            return;
+        }
+
+        await _server.SendRemoteKeyAsync(studentId, "text", "", value.ToString(), "");
+    }
+
+    private async Task ToggleRemoteControlAsync()
+    {
+        if (_server is null || SelectedTransportId() is not { } studentId || !TryGetSelectedCard(out StudentCard? card) || card?.CurrentImage is null)
+        {
+            Log("Hãy chọn một sinh viên online đã có màn hình trước khi điều khiển.");
+            return;
+        }
+
+        if (_remoteControlEnabled)
+        {
+            await StopRemoteControlAsync();
+            return;
+        }
+
+        _remoteControlEnabled = true;
+        _remoteControlTargetId = studentId;
+        await _server.SendRemoteControlStartAsync(studentId);
+        _detailFrame.Focus();
+        UpdateRemoteControlButtons();
+        _sessionHistory.AppendAudit("remote_control_start", studentId, card.DisplayName);
+        Log($"Bắt đầu điều khiển {card.DisplayName}.");
+    }
+
+    private async Task StopRemoteControlAsync()
+    {
+        if (_server is not null)
+        {
+            await _server.SendRemoteControlStopAsync(_remoteControlTargetId);
+        }
+
+        _remoteControlEnabled = false;
+        _remoteControlTargetId = null;
+        UpdateRemoteControlButtons();
+        _sessionHistory.AppendAudit("remote_control_stop", null, "Teacher stopped remote control.");
+        Log("Đã dừng điều khiển từ xa.");
+    }
+
+    private void UpdateRemoteControlButtons()
+    {
+        string text = _remoteControlEnabled
+            ? $"Dừng điều khiển {SelectedStudentDisplayName() ?? _remoteControlTargetId}"
+            : "Điều khiển máy SV";
+        _remoteControlToggleButton.Text = text;
+        _remoteControlToggleButton2.Text = text;
+    }
+
+    private static bool TryResolveZoomRelativePoint(PictureBox box, Point point, out double relativeX, out double relativeY)
+    {
+        relativeX = 0;
+        relativeY = 0;
+        if (box.Image is null || box.Width <= 0 || box.Height <= 0)
+        {
+            return false;
+        }
+
+        double imageRatio = box.Image.Width / (double)box.Image.Height;
+        double boxRatio = box.Width / (double)box.Height;
+        int drawWidth;
+        int drawHeight;
+        int offsetX;
+        int offsetY;
+        if (boxRatio > imageRatio)
+        {
+            drawHeight = box.Height;
+            drawWidth = (int)Math.Round(drawHeight * imageRatio);
+            offsetX = (box.Width - drawWidth) / 2;
+            offsetY = 0;
+        }
+        else
+        {
+            drawWidth = box.Width;
+            drawHeight = (int)Math.Round(drawWidth / imageRatio);
+            offsetX = 0;
+            offsetY = (box.Height - drawHeight) / 2;
+        }
+
+        if (point.X < offsetX || point.X > offsetX + drawWidth || point.Y < offsetY || point.Y > offsetY + drawHeight)
+        {
+            return false;
+        }
+
+        relativeX = Math.Clamp((point.X - offsetX) / (double)Math.Max(1, drawWidth), 0, 1);
+        relativeY = Math.Clamp((point.Y - offsetY) / (double)Math.Max(1, drawHeight), 0, 1);
+        return true;
     }
 
     private async Task SendRemoteTextInputAsync()
@@ -1325,7 +1706,7 @@ public sealed class MainForm : Form
             return;
         }
 
-        await _server.SendRemoteTextInputAsync(SelectedStudentId(), _teacherMessageText.Text);
+        await _server.SendRemoteTextInputAsync(SelectedTransportId(), _teacherMessageText.Text);
     }
 
     private async Task SendClipboardSetAsync()
@@ -1336,7 +1717,7 @@ public sealed class MainForm : Form
             return;
         }
 
-        await _server.SendClipboardSetAsync(SelectedStudentId(), _teacherMessageText.Text);
+        await _server.SendClipboardSetAsync(SelectedTransportId(), _teacherMessageText.Text);
     }
 
     private async Task DistributeFileAsync()
@@ -1359,7 +1740,7 @@ public sealed class MainForm : Form
 
         _distributionProgress.Value = 0;
         await _server.DistributeFileAsync(
-            SelectedStudentId(),
+            SelectedTransportId(),
             dialog.FileName,
             new Progress<int>(value => _distributionProgress.Value = Math.Clamp(value, 0, 100)));
         _distributionProgress.Value = 100;
@@ -1392,14 +1773,14 @@ public sealed class MainForm : Form
         ZipFile.CreateFromDirectory(dialog.SelectedPath, zipPath, CompressionLevel.Fastest, includeBaseDirectory: true);
         _distributionProgress.Value = 0;
         await _server.DistributeFileAsync(
-            SelectedStudentId(),
+            SelectedTransportId(),
             zipPath,
             new Progress<int>(value => _distributionProgress.Value = Math.Clamp(value, 0, 100)));
         _distributionProgress.Value = 100;
         Log($"Đã phát thư mục dưới dạng tệp nén: {Path.GetFileName(zipPath)}");
     }
 
-    private void ToggleTeacherBroadcast()
+    private async void ToggleTeacherBroadcast()
     {
         if (_server is null)
         {
@@ -1410,13 +1791,21 @@ public sealed class MainForm : Form
         if (_teacherBroadcastTimer.Enabled)
         {
             _teacherBroadcastTimer.Stop();
+            if (_server is not null)
+            {
+                await _server.SendTeacherBroadcastStopAsync();
+            }
+            _sessionHistory.AppendAudit("teacher_broadcast_stop", null, "Stopped teacher screen broadcast.");
             Log("Đã dừng phát màn hình giáo viên.");
         }
         else
         {
             _teacherBroadcastTimer.Start();
+            _sessionHistory.AppendAudit("teacher_broadcast_start", null, "Started teacher screen broadcast.");
             Log("Đang phát màn hình giáo viên.");
         }
+
+        UpdateTeacherBroadcastButton();
     }
 
     private async Task BroadcastTeacherFrameAsync()
@@ -1444,6 +1833,7 @@ public sealed class MainForm : Form
             _backendStatusLabel.Text = "Máy chủ: đã kết nối";
             Log("Đã đăng nhập máy chủ.");
             await RefreshSessionsAsync();
+            await RefreshSessionRosterAsync();
             await PublishSessionAccessAsync();
         }
         catch (Exception ex)
@@ -1474,6 +1864,7 @@ public sealed class MainForm : Form
             }
 
             Log($"Đã tải {sessions.Count} phiên từ máy chủ.");
+            await RefreshSessionRosterAsync();
         }
         catch (Exception ex)
         {
@@ -1495,6 +1886,7 @@ public sealed class MainForm : Form
             ApplyBackendSessionSelection(session);
             _sessionStartedAtUtc = ParseUtcOrNull(session.StartedAtUtc);
             Log($"Đã mở phiên {session.Code} trên máy chủ.");
+            await RefreshSessionRosterAsync();
             await PublishSessionAccessAsync();
         }
         catch (Exception ex)
@@ -1540,6 +1932,7 @@ public sealed class MainForm : Form
             _sessionStartedAtUtc = ParseUtcOrNull(policy.StartedAtUtc);
             ApplyPolicyToControls(policy);
             Log($"Đã nạp quy định cho phiên {policy.SessionCode}.");
+            await RefreshSessionRosterAsync();
         }
         catch (Exception ex)
         {
@@ -1628,6 +2021,10 @@ public sealed class MainForm : Form
         {
             BlockedProcesses = SplitRules(_blockedProcessesText.Text),
             BlockedWindowKeywords = SplitRules(_blockedKeywordsText.Text),
+            BlockedAiCliTools = SplitRules(_blockedAiCliText.Text),
+            BlockedProxyTools = SplitRules(_blockedProxyToolsText.Text),
+            BlockedIdeExtensions = SplitRules(_blockedIdeExtensionsText.Text),
+            BlockedWebsiteHosts = SplitRules(_blockedWebsitesText.Text),
             ScreenIntervalMs = (int)_screenIntervalInput.Value,
             ScreenJpegQuality = (long)_screenQualityInput.Value,
             WebcamEnabled = _webcamEnabledCheck.Checked,
@@ -1654,6 +2051,10 @@ public sealed class MainForm : Form
     {
         _blockedProcessesText.Text = string.Join(';', policy.BlockedProcesses);
         _blockedKeywordsText.Text = string.Join(';', policy.BlockedWindowKeywords);
+        _blockedAiCliText.Text = string.Join(';', policy.BlockedAiCliTools);
+        _blockedProxyToolsText.Text = string.Join(';', policy.BlockedProxyTools);
+        _blockedIdeExtensionsText.Text = string.Join(';', policy.BlockedIdeExtensions);
+        _blockedWebsitesText.Text = string.Join(';', policy.BlockedWebsiteHosts);
         _allowedWebsitesText.Text = string.Join(';', policy.AllowedWebsiteHosts);
         _screenIntervalInput.Value = Math.Clamp(policy.ScreenIntervalMs, (int)_screenIntervalInput.Minimum, (int)_screenIntervalInput.Maximum);
         _screenQualityInput.Value = Math.Clamp(policy.ScreenJpegQuality, (int)_screenQualityInput.Minimum, (int)_screenQualityInput.Maximum);
@@ -1681,33 +2082,42 @@ public sealed class MainForm : Form
 
     private void UpsertStudent(StudentState state)
     {
-        if (!_cards.TryGetValue(state.StudentId, out StudentCard? card))
+        ApplyRosterToState(state);
+        string studentKey = NormalizeStudentKey(state.StudentCodeOrId);
+        string transportId = state.TransportId;
+        _studentStates[studentKey] = state;
+        if (!_cards.TryGetValue(studentKey, out StudentCard? card))
         {
-            card = new StudentCard(state.StudentId);
-            card.Click += (_, _) => SelectStudent(state.StudentId);
-            card.ScreenDoubleClicked += (_, _) => ShowImageViewer(state.StudentId, "screen", $"Màn hình {state.DisplayName}", card.CurrentImage);
-            card.WebcamDoubleClicked += (_, _) => ShowImageViewer(state.StudentId, "webcam", $"Webcam {state.DisplayName}", card.CurrentWebcamImage);
-            _cards[state.StudentId] = card;
+            card = new StudentCard(studentKey);
+            card.Click += (_, _) => SelectStudent(studentKey);
+            card.ScreenDoubleClicked += (_, _) => ShowImageViewer(studentKey, "screen", $"Màn hình {card.DisplayName}", card.CurrentImage);
+            card.WebcamDoubleClicked += (_, _) => ShowImageViewer(studentKey, "webcam", $"Webcam {card.DisplayName}", card.CurrentWebcamImage);
+            _cards[studentKey] = card;
             _mosaicPanel.Controls.Add(card);
+            ResizeMosaicCards();
         }
 
         card.Update(state);
         UpdateMosaicEmptyState();
-        UpdateLiveViewer(state.StudentId, "screen", $"Màn hình {state.DisplayName}", card.CurrentImage);
-        UpdateLiveViewer(state.StudentId, "webcam", $"Webcam {state.DisplayName}", card.CurrentWebcamImage);
-        UpsertListItem(state);
-        if (string.Equals(SelectedStudentId(), state.StudentId, StringComparison.Ordinal))
+        UpdateLiveViewer(studentKey, "screen", $"Màn hình {state.DisplayName}", card.CurrentImage);
+        UpdateLiveViewer(studentKey, "webcam", $"Webcam {state.DisplayName}", card.CurrentWebcamImage);
+        UpsertListItem(studentKey, state);
+        if (string.Equals(SelectedStudentId(), transportId, StringComparison.Ordinal))
         {
             ShowSelectedStudent();
         }
     }
 
-    private void UpsertListItem(StudentState state)
+    private void UpsertListItem(string studentKey, StudentState state)
     {
-        ListViewItem? item = _studentsList.Items.Cast<ListViewItem>().FirstOrDefault(x => x.Tag as string == state.StudentId);
+        ListViewItem? item = _studentsList.Items.Cast<ListViewItem>().FirstOrDefault(x => string.Equals(x.Name, studentKey, StringComparison.OrdinalIgnoreCase));
         if (item is null)
         {
-            item = new ListViewItem(state.DisplayName) { Tag = state.StudentId };
+            item = new ListViewItem(state.DisplayName)
+            {
+                Name = studentKey,
+                Tag = state.TransportId
+            };
             for (int i = 0; i < 7; i++)
             {
                 item.SubItems.Add("");
@@ -1717,6 +2127,7 @@ public sealed class MainForm : Form
         }
 
         item.Text = state.DisplayName;
+        item.Tag = state.TransportId;
         item.SubItems[1].Text = state.IsOnline ? "Trực tuyến" : "Mất kết nối";
         item.SubItems[2].Text = state.WindowsUserName;
         item.SubItems[3].Text = state.MachineName;
@@ -1738,11 +2149,18 @@ public sealed class MainForm : Form
         return $"{hand}{chat}{state.LastViolation}".Trim();
     }
 
-    private void SelectStudent(string studentId)
+    private void SelectStudent(string studentKey)
     {
+        if (_remoteControlEnabled &&
+            _remoteControlTargetId is not null &&
+            !string.Equals(_remoteControlTargetId, SelectedTransportIdByKey(studentKey), StringComparison.OrdinalIgnoreCase))
+        {
+            _ = StopRemoteControlAsync();
+        }
+
         foreach (ListViewItem item in _studentsList.Items)
         {
-            item.Selected = string.Equals(item.Tag as string, studentId, StringComparison.OrdinalIgnoreCase);
+            item.Selected = string.Equals(item.Name, studentKey, StringComparison.OrdinalIgnoreCase);
         }
 
         UpdateTargetScopeLabel();
@@ -1751,6 +2169,41 @@ public sealed class MainForm : Form
     private string? SelectedStudentId()
     {
         return _studentsList.SelectedItems.Count == 0 ? null : _studentsList.SelectedItems[0].Tag as string;
+    }
+
+    private string? SelectedTransportId()
+    {
+        return SelectedStudentId();
+    }
+
+    private string? SelectedStudentKey()
+    {
+        return _studentsList.SelectedItems.Count == 0 ? null : _studentsList.SelectedItems[0].Name;
+    }
+
+    private string? SelectedStudentCode()
+    {
+        return SelectedStudentKey() is { } studentKey && _studentStates.TryGetValue(studentKey, out StudentState? state)
+            ? state.StudentCodeOrId
+            : null;
+    }
+
+    private string? SelectedStudentDisplayName()
+    {
+        return SelectedStudentKey() is { } studentKey && _cards.TryGetValue(studentKey, out StudentCard? card)
+            ? card.DisplayName
+            : null;
+    }
+
+    private string? SelectedTransportIdByKey(string studentKey)
+    {
+        return _studentStates.TryGetValue(studentKey, out StudentState? state) ? state.TransportId : null;
+    }
+
+    private bool TryGetSelectedCard(out StudentCard? card)
+    {
+        card = null;
+        return SelectedStudentKey() is { } studentKey && _cards.TryGetValue(studentKey, out card);
     }
 
     private int CurrentBackendSessionId()
@@ -1798,25 +2251,134 @@ public sealed class MainForm : Form
         }
     }
 
+    private async Task RefreshSessionRosterAsync()
+    {
+        if (!_backendClient.IsAuthenticated || CurrentBackendSessionId() <= 0)
+        {
+            _sessionRoster.Clear();
+            return;
+        }
+
+        try
+        {
+            List<SessionRosterStudentDto> roster = await _backendClient.GetSessionRosterAsync(CurrentBackendSessionId());
+            _sessionRoster.Clear();
+            foreach (SessionRosterStudentDto student in roster)
+            {
+                string key = NormalizeStudentKey(student.StudentCode);
+                if (!string.IsNullOrWhiteSpace(key))
+                {
+                    _sessionRoster[key] = student;
+                }
+            }
+
+            foreach (StudentState state in _studentStates.Values.ToList())
+            {
+                ApplyRosterToState(state);
+            }
+
+            foreach (StudentState state in _studentStates.Values.ToList())
+            {
+                UpsertStudent(state);
+            }
+
+            if (roster.Count > 0)
+            {
+                Log($"Đã tải roster {roster.Count} sinh viên cho phiên hiện tại.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"Tải roster thất bại: {ex.Message}");
+        }
+    }
+
+    private void ApplyRosterToState(StudentState state)
+    {
+        string key = NormalizeStudentKey(state.StudentCodeOrId);
+        if (_sessionRoster.TryGetValue(key, out SessionRosterStudentDto? roster) && !string.IsNullOrWhiteSpace(roster.FullName))
+        {
+            state.StudentName = roster.FullName;
+            state.StudentCode = roster.StudentCode;
+        }
+    }
+
+    private async Task RefreshSelectedStudentWebcamsAsync()
+    {
+        await Task.CompletedTask;
+    }
+
+    private async Task SelectStudentWebcamAsync()
+    {
+        await Task.CompletedTask;
+    }
+
+    private void PopulateWebcamPicker(StudentState? state)
+    {
+        try
+        {
+            if (state is null)
+            {
+                _webcamInventoryLabel.Text = "Chưa có camera";
+                return;
+            }
+
+            List<WebcamPickerItem> desiredItems = state.WebcamDevices
+                .Select(device => new WebcamPickerItem(device.CameraId, $"{device.DisplayName} ({device.Status})"))
+                .ToList();
+            bool sameItems = _studentWebcamPicker.Items.Count == desiredItems.Count &&
+                _studentWebcamPicker.Items.Cast<WebcamPickerItem>().Zip(desiredItems).All(pair =>
+                    string.Equals(pair.First.CameraId, pair.Second.CameraId, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(pair.First.Text, pair.Second.Text, StringComparison.Ordinal));
+            string? currentSelection = (_studentWebcamPicker.SelectedItem as WebcamPickerItem)?.CameraId;
+            if (!sameItems || !string.Equals(currentSelection, state.SelectedCameraId, StringComparison.OrdinalIgnoreCase))
+            {
+                _studentWebcamPicker.Items.Clear();
+                foreach (WebcamPickerItem desiredItem in desiredItems)
+                {
+                    _studentWebcamPicker.Items.Add(desiredItem);
+                }
+
+                if (_studentWebcamPicker.Items.Count > 0)
+                {
+                    int selectedIndex = desiredItems.FindIndex(x => string.Equals(x.CameraId, state.SelectedCameraId, StringComparison.OrdinalIgnoreCase));
+                    _studentWebcamPicker.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+                }
+            }
+
+            _studentWebcamPicker.Enabled = _studentWebcamPicker.Items.Count > 0;
+            _refreshStudentWebcamsButton.Enabled = state.IsOnline;
+            _webcamInventoryLabel.Text = state.WebcamDevices.Count == 0
+                ? "Chưa nhận được danh sách camera"
+                : $"Có {state.WebcamDevices.Count} camera, chọn để xem webcam chi tiết";
+        }
+        finally
+        {
+        }
+    }
+
     private void ShowSelectedStudent()
     {
         UpdateTargetScopeLabel();
-        if (SelectedStudentId() is not { } studentId)
+        if (SelectedStudentKey() is not { } studentKey)
         {
             ReplaceImage(_detailFrame, null);
             ReplaceImage(_webcamFrame, null);
             _detailStatusLabel.Text = "Màn hình: chưa chọn sinh viên";
             _webcamDetailStatus.Text = "Webcam: chưa chọn sinh viên";
             _selectedStudentInfoText.Text = "Chưa chọn sinh viên.";
+            PopulateWebcamPicker(null);
             return;
         }
 
-        if (_cards.TryGetValue(studentId, out StudentCard? card))
+        if (_cards.TryGetValue(studentKey, out StudentCard? card))
         {
             ReplaceImage(_detailFrame, card.CurrentImage);
             ReplaceImage(_webcamFrame, card.CurrentWebcamImage);
             _detailStatusLabel.Text = $"Màn hình: {card.DisplayName}";
             _webcamDetailStatus.Text = $"Webcam: {card.CurrentWebcamStatus}";
+            StudentState? state = _studentStates.GetValueOrDefault(studentKey);
+            PopulateWebcamPicker(state);
             if (_studentsList.SelectedItems.Count > 0)
             {
                 ListViewItem item = _studentsList.SelectedItems[0];
@@ -1829,6 +2391,11 @@ public sealed class MainForm : Form
                     $"Nộp bài: {item.SubItems[5].Text}{Environment.NewLine}" +
                     $"Webcam: {item.SubItems[6].Text}{Environment.NewLine}" +
                     $"Cảnh báo: {item.SubItems[7].Text}";
+            }
+
+            if (state is { IsOnline: true } && state.WebcamDevices.Count == 0)
+            {
+                _ = RefreshSelectedStudentWebcamsAsync();
             }
         }
     }
@@ -1968,8 +2535,8 @@ public sealed class MainForm : Form
     private void UpdateTargetScopeLabel()
     {
         _studentCountLabel.Text = $"Sinh viên: {_cards.Count}";
-        _targetScopeLabel.Text = SelectedStudentId() is { } studentId
-            ? $"Phạm vi: {studentId}"
+        _targetScopeLabel.Text = SelectedStudentDisplayName() is { } displayName
+            ? $"Phạm vi: {displayName}"
             : "Phạm vi: toàn bộ sinh viên";
     }
 
@@ -1977,6 +2544,35 @@ public sealed class MainForm : Form
     {
         _mosaicEmptyLabel.Visible = _cards.Count == 0;
         _studentCountLabel.Text = $"Sinh viên: {_cards.Count}";
+    }
+
+    private void UpdateTeacherBroadcastButton()
+    {
+        _teacherBroadcastToggleButton.Text = _teacherBroadcastTimer.Enabled
+            ? "Dừng chia sẻ màn hình GV"
+            : "Chia sẻ màn hình GV";
+    }
+
+    private void ResizeMosaicCards()
+    {
+        if (_mosaicPanel.ClientSize.Width <= 0 || _cards.Count == 0)
+        {
+            return;
+        }
+
+        int availableWidth = Math.Max(220, _mosaicPanel.ClientSize.Width - _mosaicPanel.Padding.Horizontal - SystemInformation.VerticalScrollBarWidth - 8);
+        int columns = availableWidth >= 900 ? 5 : Math.Clamp(availableWidth / 190, 1, 4);
+        int margin = 6;
+        int cardWidth = Math.Max(160, (availableWidth / columns) - (margin * 2) - 2);
+        int imageHeight = (int)Math.Round(cardWidth * 9 / 16.0);
+        int cardHeight = imageHeight + 48;
+
+        foreach (StudentCard card in _cards.Values)
+        {
+            card.Margin = new Padding(margin);
+            card.Width = cardWidth;
+            card.Height = cardHeight;
+        }
     }
 
     private void AppendChatHistory(string message)
@@ -2002,8 +2598,8 @@ public sealed class MainForm : Form
         {
             _chatPopup = new FloatingChatForm(
                 _chatHistoryText,
-                SelectedStudentId,
-                SendChatMessageAsync);
+                SelectedTransportId,
+                async (transportId, message) => await SendChatMessageAsync(transportId, SelectedStudentCode(), message));
         }
 
         if (!_chatPopup.Visible)
@@ -2015,20 +2611,116 @@ public sealed class MainForm : Form
         _chatPopup.Activate();
     }
 
+    private void RefreshHistorySessions()
+    {
+        IReadOnlyList<SessionHistoryEntry> entries = SessionHistoryStore.LoadHistoryEntries();
+        _historySessionsList.BeginUpdate();
+        _historySessionsList.Items.Clear();
+        foreach (SessionHistoryEntry entry in entries)
+        {
+            ListViewItem item = new(entry.SessionCode)
+            {
+                Tag = entry
+            };
+            item.SubItems.Add(entry.StartedAtUtc?.ToLocalTime().ToString("dd/MM HH:mm:ss") ?? "");
+            item.SubItems.Add(entry.FinishedAtUtc?.ToLocalTime().ToString("dd/MM HH:mm:ss") ?? "");
+            item.SubItems.Add(entry.StudentCount.ToString());
+            item.SubItems.Add(entry.ViolationCount.ToString());
+            item.SubItems.Add(entry.TeacherMachine);
+            _historySessionsList.Items.Add(item);
+        }
+
+        _historySessionsList.EndUpdate();
+        if (_historySessionsList.Items.Count > 0 && _historySessionsList.SelectedItems.Count == 0)
+        {
+            _historySessionsList.Items[0].Selected = true;
+        }
+        else
+        {
+            ShowSelectedHistoryEntry();
+        }
+    }
+
+    private void ShowSelectedHistoryEntry()
+    {
+        if (_historySessionsList.SelectedItems.Count == 0 || _historySessionsList.SelectedItems[0].Tag is not SessionHistoryEntry entry)
+        {
+            ReplaceImage(_historyStartImage, null);
+            ReplaceImage(_historyEndImage, null);
+            _historyDetailsText.Text = "Chưa chọn phiên lịch sử.";
+            return;
+        }
+
+        ReplaceImage(_historyStartImage, LoadImageOrNull(entry.StartImagePath));
+        ReplaceImage(_historyEndImage, LoadImageOrNull(entry.EndImagePath));
+        _historyDetailsText.Text =
+            $"Phiên: {entry.SessionCode}{Environment.NewLine}" +
+            $"Tiêu đề: {entry.Title}{Environment.NewLine}" +
+            $"Máy giáo viên: {entry.TeacherMachine}{Environment.NewLine}" +
+            $"Bắt đầu: {entry.StartedAtUtc?.ToLocalTime():dd/MM/yyyy HH:mm:ss}{Environment.NewLine}" +
+            $"Kết thúc: {entry.FinishedAtUtc?.ToLocalTime():dd/MM/yyyy HH:mm:ss}{Environment.NewLine}" +
+            $"Sinh viên: {entry.StudentCount}{Environment.NewLine}" +
+            $"Vi phạm: {entry.ViolationCount}{Environment.NewLine}" +
+            $"Thư mục: {entry.FolderPath}{Environment.NewLine}" +
+            $"session.json: {entry.SessionJsonPath}{Environment.NewLine}" +
+            $"violations.jsonl: {entry.ViolationsPath ?? "(không có)"}{Environment.NewLine}" +
+            $"audit.jsonl: {entry.AuditPath ?? "(không có)"}";
+    }
+
+    private void OpenSelectedHistoryFolder()
+    {
+        if (_historySessionsList.SelectedItems.Count == 0 || _historySessionsList.SelectedItems[0].Tag is not SessionHistoryEntry entry)
+        {
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = entry.FolderPath,
+            UseShellExecute = true
+        });
+    }
+
+    private void ExportHistoryIndex(string format)
+    {
+        IReadOnlyList<SessionHistoryEntry> entries = SessionHistoryStore.LoadHistoryEntries();
+        string folder = Path.Combine(AppContext.BaseDirectory, "Exports");
+        Directory.CreateDirectory(folder);
+        string timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        if (string.Equals(format, "json", StringComparison.OrdinalIgnoreCase))
+        {
+            string jsonPath = Path.Combine(folder, $"session-history-{timestamp}.json");
+            string json = System.Text.Json.JsonSerializer.Serialize(entries, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(jsonPath, json);
+            Log($"Đã xuất lịch sử phiên: {jsonPath}");
+            return;
+        }
+
+        string csvPath = Path.Combine(folder, $"session-history-{timestamp}.csv");
+        List<string> lines =
+        [
+            "sessionCode,title,teacherMachine,startedAtLocal,finishedAtLocal,studentCount,violationCount,folderPath",
+            .. entries.Select(entry =>
+                $"\"{entry.SessionCode}\",\"{entry.Title.Replace("\"", "\"\"")}\",\"{entry.TeacherMachine}\",\"{entry.StartedAtUtc?.ToLocalTime():dd/MM/yyyy HH:mm:ss}\",\"{entry.FinishedAtUtc?.ToLocalTime():dd/MM/yyyy HH:mm:ss}\",\"{entry.StudentCount}\",\"{entry.ViolationCount}\",\"{entry.FolderPath.Replace("\"", "\"\"")}\"")
+        ];
+        File.WriteAllLines(csvPath, lines);
+        Log($"Đã xuất lịch sử phiên: {csvPath}");
+    }
+
     private void ShowSelectedStudentViewer(string streamKind)
     {
-        if (SelectedStudentId() is not { } studentId || !_cards.TryGetValue(studentId, out StudentCard? card))
+        if (SelectedStudentKey() is not { } studentKey || !_cards.TryGetValue(studentKey, out StudentCard? card))
         {
             return;
         }
 
         if (streamKind == "screen")
         {
-            ShowImageViewer(studentId, "screen", $"Màn hình {card.DisplayName}", card.CurrentImage);
+            ShowImageViewer(studentKey, "screen", $"Màn hình {card.DisplayName}", card.CurrentImage);
             return;
         }
 
-        ShowImageViewer(studentId, "webcam", $"Webcam {card.DisplayName}", card.CurrentWebcamImage);
+        ShowImageViewer(studentKey, "webcam", $"Webcam {card.DisplayName}", card.CurrentWebcamImage);
     }
 
     private void ShowImageViewer(string studentId, string streamKind, string title, Image? image)
@@ -2078,9 +2770,89 @@ public sealed class MainForm : Form
 
     private static void ReplaceImage(PictureBox pictureBox, Image? source)
     {
+        if (ReferenceEquals(pictureBox.Image, source))
+        {
+            return;
+        }
+
         Image? old = pictureBox.Image;
         pictureBox.Image = source is null ? null : (Image)source.Clone();
         old?.Dispose();
+    }
+
+    private static Image? LoadImageOrNull(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            return null;
+        }
+
+        using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using Image image = Image.FromStream(stream);
+        return (Image)image.Clone();
+    }
+
+    private static string NormalizeStudentKey(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? ""
+            : value.Trim().ToUpperInvariant();
+    }
+
+    private static string BuildModifiers(KeyEventArgs e)
+    {
+        List<string> modifiers = [];
+        if (e.Control)
+        {
+            modifiers.Add("CTRL");
+        }
+
+        if (e.Alt)
+        {
+            modifiers.Add("ALT");
+        }
+
+        if (e.Shift)
+        {
+            modifiers.Add("SHIFT");
+        }
+
+        return string.Join('+', modifiers);
+    }
+
+    private static string ToProtocolKey(Keys key)
+    {
+        return key switch
+        {
+            Keys.Enter => "ENTER",
+            Keys.Escape => "ESC",
+            Keys.Tab => "TAB",
+            Keys.Back => "BACKSPACE",
+            Keys.Delete => "DELETE",
+            Keys.Insert => "INSERT",
+            Keys.Home => "HOME",
+            Keys.End => "END",
+            Keys.PageUp => "PAGEUP",
+            Keys.PageDown => "PAGEDOWN",
+            Keys.Up => "UP",
+            Keys.Down => "DOWN",
+            Keys.Left => "LEFT",
+            Keys.Right => "RIGHT",
+            Keys.Space => "SPACE",
+            Keys.F1 => "F1",
+            Keys.F2 => "F2",
+            Keys.F3 => "F3",
+            Keys.F4 => "F4",
+            Keys.F5 => "F5",
+            Keys.F6 => "F6",
+            Keys.F7 => "F7",
+            Keys.F8 => "F8",
+            Keys.F9 => "F9",
+            Keys.F10 => "F10",
+            Keys.F11 => "F11",
+            Keys.F12 => "F12",
+            _ => ""
+        };
     }
 
     private sealed class StudentCard : Panel
@@ -2111,6 +2883,9 @@ public sealed class MainForm : Form
             Controls.Add(_caption);
             _picture.DoubleClick += (_, _) => ScreenDoubleClicked?.Invoke(this, EventArgs.Empty);
             _webcamThumbnail.DoubleClick += (_, _) => WebcamDoubleClicked?.Invoke(this, EventArgs.Empty);
+            _picture.Click += (_, _) => OnClick(EventArgs.Empty);
+            _webcamThumbnail.Click += (_, _) => OnClick(EventArgs.Empty);
+            _caption.Click += (_, _) => OnClick(EventArgs.Empty);
             Resize += (_, _) => PositionWebcamThumbnail();
             PositionWebcamThumbnail();
         }
@@ -2143,15 +2918,21 @@ public sealed class MainForm : Form
             if (state.LatestWebcamFrame is not null)
             {
                 Image? oldCam = CurrentWebcamImage;
-                CurrentWebcamImage = (Image)state.LatestWebcamFrame.Clone();
-                oldCam?.Dispose();
                 Image? oldThumb = _webcamThumbnail.Image;
-                _webcamThumbnail.Image = (Image)CurrentWebcamImage.Clone();
-                oldThumb?.Dispose();
+                CurrentWebcamImage = (Image)state.LatestWebcamFrame.Clone();
+                _webcamThumbnail.Image = CurrentWebcamImage;
+                oldCam?.Dispose();
+                if (!ReferenceEquals(oldThumb, oldCam))
+                {
+                    oldThumb?.Dispose();
+                }
                 _webcamThumbnail.Visible = true;
             }
 
-            Invalidate();
+            if (_handRaised || !_isOnline)
+            {
+                Invalidate();
+            }
         }
 
         private void PositionWebcamThumbnail()
@@ -2167,6 +2948,23 @@ public sealed class MainForm : Form
                 : _isOnline ? Color.FromArgb(211, 220, 228) : Color.FromArgb(214, 96, 96);
             using Pen pen = new(border, _handRaised ? 3F : 1.5F);
             e.Graphics.DrawRectangle(pen, 1, 1, Width - 3, Height - 3);
+        }
+    }
+
+    private sealed class WebcamPickerItem
+    {
+        public WebcamPickerItem(string cameraId, string text)
+        {
+            CameraId = cameraId;
+            Text = text;
+        }
+
+        public string CameraId { get; }
+        public string Text { get; }
+
+        public override string ToString()
+        {
+            return Text;
         }
     }
 

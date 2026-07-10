@@ -4,12 +4,83 @@ namespace StudentForm;
 
 internal sealed class WebcamCaptureService : IDisposable
 {
+    private const int MaxCameraIndex = 15;
+    private const int CaptureWidth = 320;
+    private const int CaptureHeight = 180;
+    private const int CaptureFps = 30;
     private VideoCapture? _capture;
     private string? _lastError;
+    private int _selectedCameraIndex;
+    private string _selectedCameraId = "camera-0";
     private readonly object _sync = new();
 
     public bool IsAvailable => _capture?.IsOpened() == true;
+    public string SelectedCameraId => _selectedCameraId;
     public string LastStatusMessage => _lastError ?? (IsAvailable ? "Webcam ready." : "Webcam not initialized.");
+
+    public IReadOnlyList<WebcamDeviceDescriptor> ProbeDevices(int maxIndex = MaxCameraIndex)
+    {
+        List<WebcamDeviceDescriptor> devices = [];
+        lock (_sync)
+        {
+            for (int index = 0; index <= maxIndex; index++)
+            {
+                string cameraId = CameraId(index);
+                try
+                {
+                    using VideoCapture probe = new(index, VideoCaptureAPIs.DSHOW);
+                    bool opened = probe.IsOpened();
+                    if (!opened)
+                    {
+                        probe.Open(index, VideoCaptureAPIs.DSHOW);
+                        opened = probe.IsOpened();
+                    }
+
+                    if (opened)
+                    {
+                        using Mat frame = new();
+                        probe.Grab();
+                        opened = probe.Read(frame) && !frame.Empty();
+                    }
+
+                    devices.Add(new WebcamDeviceDescriptor(
+                        cameraId,
+                        index,
+                        $"Camera {index}{(index == _selectedCameraIndex ? " (đang chọn)" : "")}",
+                        opened,
+                        opened ? "available" : "unavailable"));
+                }
+                catch (Exception ex)
+                {
+                    devices.Add(new WebcamDeviceDescriptor(cameraId, index, $"Camera {index}", false, ex.Message));
+                }
+            }
+        }
+
+        return devices.Where(x => x.IsAvailable).Concat(devices.Where(x => !x.IsAvailable)).ToList();
+    }
+
+    public void SelectCamera(string cameraId)
+    {
+        if (string.IsNullOrWhiteSpace(cameraId))
+        {
+            return;
+        }
+
+        int index = ParseCameraIndex(cameraId);
+        lock (_sync)
+        {
+            if (index == _selectedCameraIndex && string.Equals(cameraId, _selectedCameraId, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _selectedCameraIndex = index;
+            _selectedCameraId = CameraId(index);
+            _lastError = null;
+            ResetCapture();
+        }
+    }
 
     public WebcamCaptureResult TryCaptureJpeg(long quality)
     {
@@ -60,22 +131,40 @@ internal sealed class WebcamCaptureService : IDisposable
         }
 
         ResetCapture();
-        _capture = new VideoCapture(0, VideoCaptureAPIs.DSHOW);
-        _capture.Open(0, VideoCaptureAPIs.DSHOW);
-
-        if (!_capture.IsOpened())
+        foreach (int candidateIndex in BuildCandidateIndexes())
         {
-            _lastError = "No usable webcam was found on this workstation.";
-            ResetCapture();
+            VideoCapture capture = new(candidateIndex, VideoCaptureAPIs.DSHOW);
+            capture.Open(candidateIndex, VideoCaptureAPIs.DSHOW);
+            if (!capture.IsOpened())
+            {
+                capture.Dispose();
+                continue;
+            }
+
+            capture.Set(VideoCaptureProperties.FourCC, VideoWriter.FourCC('M', 'J', 'P', 'G'));
+            capture.Set(VideoCaptureProperties.FrameWidth, CaptureWidth);
+            capture.Set(VideoCaptureProperties.FrameHeight, CaptureHeight);
+            capture.Set(VideoCaptureProperties.Fps, CaptureFps);
+            capture.Set(VideoCaptureProperties.BufferSize, 1);
+
+            using Mat probe = new();
+            capture.Grab();
+            if (!capture.Read(probe) || probe.Empty())
+            {
+                capture.Release();
+                capture.Dispose();
+                continue;
+            }
+
+            _capture = capture;
+            _selectedCameraIndex = candidateIndex;
+            _selectedCameraId = CameraId(candidateIndex);
+            _lastError = null;
             return;
         }
 
-        _capture.Set(VideoCaptureProperties.FourCC, VideoWriter.FourCC('M', 'J', 'P', 'G'));
-        _capture.Set(VideoCaptureProperties.FrameWidth, 320);
-        _capture.Set(VideoCaptureProperties.FrameHeight, 240);
-        _capture.Set(VideoCaptureProperties.Fps, 15);
-        _capture.Set(VideoCaptureProperties.BufferSize, 1);
-        _lastError = null;
+        _lastError = "Khong tim thay webcam hoat dong.";
+        ResetCapture();
     }
 
     private void ResetCapture()
@@ -87,16 +176,46 @@ internal sealed class WebcamCaptureService : IDisposable
 
     private static Mat NormalizeFrame(Mat frame)
     {
-        if (frame.Width <= 320 && frame.Height <= 240)
+        if (frame.Width <= CaptureWidth && frame.Height <= CaptureHeight)
         {
             return frame.Clone();
         }
 
         Mat resized = new();
-        Cv2.Resize(frame, resized, new OpenCvSharp.Size(320, 240), 0, 0, InterpolationFlags.Area);
+        double scale = Math.Min((double)CaptureWidth / frame.Width, (double)CaptureHeight / frame.Height);
+        int width = Math.Max(1, (int)Math.Round(frame.Width * scale));
+        int height = Math.Max(1, (int)Math.Round(frame.Height * scale));
+        Cv2.Resize(frame, resized, new OpenCvSharp.Size(width, height), 0, 0, InterpolationFlags.Area);
         return resized;
     }
+
+    private IEnumerable<int> BuildCandidateIndexes()
+    {
+        yield return _selectedCameraIndex;
+        for (int index = 0; index <= MaxCameraIndex; index++)
+        {
+            if (index != _selectedCameraIndex)
+            {
+                yield return index;
+            }
+        }
+    }
+
+    private static string CameraId(int index) => $"camera-{index}";
+
+    private static int ParseCameraIndex(string cameraId)
+    {
+        if (cameraId.StartsWith("camera-", StringComparison.OrdinalIgnoreCase) &&
+            int.TryParse(cameraId["camera-".Length..], out int parsed))
+        {
+            return Math.Clamp(parsed, 0, MaxCameraIndex);
+        }
+
+        return 0;
+    }
 }
+
+internal sealed record WebcamDeviceDescriptor(string CameraId, int CameraIndex, string DisplayName, bool IsAvailable, string Status);
 
 internal readonly record struct WebcamCaptureResult(bool IsSuccess, byte[]? Jpeg, string Message)
 {

@@ -71,19 +71,18 @@ class ExamSessionsController extends BaseApiController
         $rules = BlockedApp::find()
             ->where(['exam_session_id' => $session->id, 'is_active' => 1])
             ->all();
+        $rulesByType = $this->rulesByType($rules);
 
         return [
             'sessionId' => (int)$session->id,
             'sessionCode' => $session->code,
             'sessionToken' => $session->session_token,
-            'blockedProcesses' => array_values(array_map(
-                fn(BlockedApp $rule) => $rule->pattern,
-                array_filter($rules, fn(BlockedApp $rule) => $rule->rule_type === 'process')
-            )),
-            'blockedWindowKeywords' => array_values(array_map(
-                fn(BlockedApp $rule) => $rule->pattern,
-                array_filter($rules, fn(BlockedApp $rule) => $rule->rule_type === 'window_title')
-            )),
+            'blockedProcesses' => $rulesByType['process'] ?? [],
+            'blockedWindowKeywords' => $rulesByType['window_title'] ?? [],
+            'blockedAiCliTools' => $rulesByType['ai_cli'] ?? [],
+            'blockedProxyTools' => $rulesByType['proxy_tool'] ?? [],
+            'blockedIdeExtensions' => $rulesByType['ide_extension'] ?? [],
+            'blockedWebsiteHosts' => $rulesByType['website_host'] ?? [],
             'screenIntervalMs' => (int)$session->screen_interval_ms,
             'screenJpegQuality' => (int)$session->screen_jpeg_quality,
             'webcamEnabled' => (bool)$session->webcam_enabled,
@@ -109,6 +108,21 @@ class ExamSessionsController extends BaseApiController
             'websitePolicyMode' => $session->website_policy_mode ?: 'allowlist',
             'allowedWebsiteHosts' => $this->splitPolicyList((string)$session->allowed_website_hosts),
         ];
+    }
+
+    public function actionRoster(int $id): array
+    {
+        $session = $this->findSession($id);
+        $students = Student::find()
+            ->where(['class_id' => $session->class_id])
+            ->orderBy(['code' => SORT_ASC])
+            ->all();
+
+        return array_map(static fn(Student $student) => [
+            'studentId' => (int)$student->id,
+            'studentCode' => $student->code,
+            'fullName' => $student->full_name,
+        ], $students);
     }
 
     public function actionUpdatePolicy(int $id): array
@@ -152,6 +166,19 @@ class ExamSessionsController extends BaseApiController
         if (array_key_exists('blockedWindowKeywords', $body) || array_key_exists('blocked_window_keywords', $body)) {
             $keywordRules = $body['blockedWindowKeywords'] ?? $body['blocked_window_keywords'] ?? [];
             $this->replaceRules($session->id, 'window_title', is_array($keywordRules) ? $keywordRules : []);
+        }
+
+        $extraRuleMaps = [
+            'blockedAiCliTools' => 'ai_cli',
+            'blockedProxyTools' => 'proxy_tool',
+            'blockedIdeExtensions' => 'ide_extension',
+            'blockedWebsiteHosts' => 'website_host',
+        ];
+        foreach ($extraRuleMaps as $bodyKey => $ruleType) {
+            if (array_key_exists($bodyKey, $body)) {
+                $rules = $body[$bodyKey];
+                $this->replaceRules($session->id, $ruleType, is_array($rules) ? $rules : []);
+            }
         }
 
         return $this->actionPolicy($id);
@@ -347,6 +374,16 @@ class ExamSessionsController extends BaseApiController
                 throw new BadRequestHttpException(json_encode($rule->errors));
             }
         }
+    }
+
+    private function rulesByType(array $rules): array
+    {
+        $grouped = [];
+        foreach ($rules as $rule) {
+            $grouped[$rule->rule_type][] = $rule->pattern;
+        }
+
+        return $grouped;
     }
 
     private function applyPolicyDefaults(ExamSession $session): void

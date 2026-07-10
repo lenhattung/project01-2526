@@ -49,6 +49,7 @@ return [
                 'POST api/exam-sessions/<id:\d+>/start' => 'api/exam-sessions/start',
                 'POST api/exam-sessions/<id:\d+>/finish' => 'api/exam-sessions/finish',
                 'GET api/exam-sessions/<id:\d+>/policy' => 'api/exam-sessions/policy',
+                'GET api/exam-sessions/<id:\d+>/roster' => 'api/exam-sessions/roster',
                 'POST api/exam-sessions/<id:\d+>/policy' => 'api/exam-sessions/update-policy',
                 'POST api/exam-sessions/<id:\d+>/publish-access' => 'api/exam-sessions/publish-access',
                 'GET api/exam-sessions/<id:\d+>/report' => 'api/exam-sessions/report',

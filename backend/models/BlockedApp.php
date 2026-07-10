@@ -16,7 +16,7 @@ class BlockedApp extends ActiveRecord
         return [
             [['exam_session_id', 'rule_type', 'pattern'], 'required'],
             [['exam_session_id'], 'integer'],
-            [['rule_type'], 'in', 'range' => ['process', 'window_title']],
+            [['rule_type'], 'in', 'range' => ['process', 'ai_cli', 'proxy_tool', 'window_title', 'ide_extension', 'website_host']],
             [['pattern'], 'string', 'max' => 255],
             [['is_active'], 'boolean'],
         ];

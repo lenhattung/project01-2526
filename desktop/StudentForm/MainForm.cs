@@ -14,6 +14,7 @@ public sealed class MainForm : Form
     private readonly TextBox _studentCodeText = new() { Text = "SV001", Width = 180 };
     private readonly TextBox _studentNameText = new() { Text = Environment.UserName, Width = 220 };
     private readonly TextBox _windowsUserText = new() { Text = Environment.UserName, Width = 180, ReadOnly = true };
+    private readonly Button _trayModeButton = new() { Text = "Chạy ngầm: Tắt", Width = 145, Tag = "wifi" };
     private readonly TextBox _chatText = new()
     {
         Text = "Em cần hỗ trợ.",
@@ -30,10 +31,20 @@ public sealed class MainForm : Form
     private readonly Label _submissionStateLabel = new() { Text = "Chưa nộp", AutoSize = true };
     private readonly Label _handRaiseStateLabel = new() { Text = "Chưa yêu cầu hỗ trợ", AutoSize = true };
     private readonly Label _examWindowLabel = new() { Text = "Thời gian: chưa giới hạn", AutoSize = true };
+    private readonly Label _remoteControlBanner = new()
+    {
+        Dock = DockStyle.Top,
+        Height = 30,
+        TextAlign = ContentAlignment.MiddleCenter,
+        Text = "Giảng viên đang điều khiển máy này",
+        BackColor = Color.FromArgb(255, 243, 205),
+        ForeColor = Color.FromArgb(133, 77, 14),
+        Visible = false
+    };
     private readonly ProgressBar _submissionProgress = new() { Minimum = 0, Maximum = 100, Width = 300 };
     private readonly ListBox _log = new() { Dock = DockStyle.Fill };
     private readonly System.Windows.Forms.Timer _heartbeatTimer = new() { Interval = 5000 };
-    private readonly System.Windows.Forms.Timer _screenTimer = new() { Interval = 1500 };
+    private readonly System.Windows.Forms.Timer _screenTimer = new() { Interval = 500 };
     private readonly System.Windows.Forms.Timer _webcamTimer = new();
     private readonly System.Windows.Forms.Timer _processTimer = new() { Interval = 2000 };
     private readonly ProcessMonitor _processMonitor = new();
@@ -60,6 +71,7 @@ public sealed class MainForm : Form
     private DateTimeOffset _lastClipboardEventAt = DateTimeOffset.MinValue;
     private int _webcamSendBusy;
     private CancellationTokenSource? _reconnectCts;
+    private NotifyIcon? _trayIcon;
     private string? _lastResolvedHost;
     private int _lastResolvedPort;
     private string? _lastLanHost;
@@ -68,6 +80,8 @@ public sealed class MainForm : Form
     private int _reconnectLoopStarted;
     private bool _manualDisconnectRequested;
     private bool _isClosing;
+    private bool _allowExit;
+    private bool _trayModeEnabled;
 
     public MainForm()
     {
@@ -88,13 +102,24 @@ public sealed class MainForm : Form
         _screenTimer.Tick += async (_, _) => await SendScreenAsync();
         _webcamTimer.Tick += async (_, _) => await SendWebcamAsync();
         _processTimer.Tick += async (_, _) => await ScanPolicyAsync();
+        _trayModeButton.Click += (_, _) => ToggleTrayMode();
 
         Controls.Add(BuildLayout());
+        Controls.Add(_remoteControlBanner);
+        _remoteControlBanner.BringToFront();
         Resize += (_, _) => BeginInvoke(UpdateResponsiveLayout);
         Shown += (_, _) => BeginInvoke(UpdateResponsiveLayout);
+        InitializeTrayIcon();
         UiTheme.Apply(this);
-        FormClosing += async (_, _) =>
+        FormClosing += async (_, e) =>
         {
+            if (e.CloseReason == CloseReason.UserClosing && !_allowExit && _trayModeEnabled)
+            {
+                e.Cancel = true;
+                HideToTray();
+                return;
+            }
+
             _isClosing = true;
             CancelReconnectLoop();
             StopTimers();
@@ -105,7 +130,90 @@ public sealed class MainForm : Form
             }
 
             _webcamCapture.Dispose();
+            if (_trayIcon is not null)
+            {
+                _trayIcon.Visible = false;
+                _trayIcon.Dispose();
+                _trayIcon = null;
+            }
         };
+    }
+
+    private void InitializeTrayIcon()
+    {
+        _trayIcon = new NotifyIcon
+        {
+            Icon = Icon ?? SystemIcons.Application,
+            Text = "ExamGuard - Máy sinh viên",
+            Visible = false
+        };
+        _trayIcon.DoubleClick += (_, _) => RestoreFromTray();
+
+        ContextMenuStrip menu = new();
+        menu.Items.Add("Mở lại", null, (_, _) => RestoreFromTray());
+        menu.Items.Add("Tắt chạy ngầm", null, (_, _) =>
+        {
+            _trayModeEnabled = false;
+            UpdateTrayModeUi();
+            RestoreFromTray();
+        });
+        menu.Items.Add("Thoát", null, (_, _) =>
+        {
+            _allowExit = true;
+            _trayIcon!.Visible = false;
+            Close();
+        });
+        _trayIcon.ContextMenuStrip = menu;
+        UpdateTrayModeUi();
+    }
+
+    private void ToggleTrayMode()
+    {
+        _trayModeEnabled = !_trayModeEnabled;
+        UpdateTrayModeUi();
+        Log(_trayModeEnabled
+            ? "Đã bật chế độ chạy ngầm."
+            : "Đã tắt chế độ chạy ngầm.");
+
+        if (_trayModeEnabled)
+        {
+            HideToTray();
+        }
+    }
+
+    private void UpdateTrayModeUi()
+    {
+        _trayModeButton.Text = _trayModeEnabled ? "Chạy ngầm: Bật" : "Chạy ngầm: Tắt";
+        if (_trayIcon?.ContextMenuStrip is { Items.Count: >= 2 } menu)
+        {
+            menu.Items[1].Visible = _trayModeEnabled;
+        }
+    }
+
+    private void HideToTray()
+    {
+        if (_trayIcon is null || !_trayModeEnabled)
+        {
+            return;
+        }
+
+        ShowInTaskbar = false;
+        WindowState = FormWindowState.Minimized;
+        Hide();
+        _trayIcon.Visible = true;
+    }
+
+    private void RestoreFromTray()
+    {
+        if (_trayIcon is not null)
+        {
+            _trayIcon.Visible = false;
+        }
+
+        ShowInTaskbar = true;
+        Show();
+        WindowState = FormWindowState.Normal;
+        Activate();
     }
 
     private Control BuildLayout()
@@ -185,7 +293,7 @@ public sealed class MainForm : Form
         connectionGrid.Controls.Add(LabelFor("Tên user máy"), 0, 4);
         _windowsUserText.Dock = DockStyle.Fill;
         connectionGrid.Controls.Add(_windowsUserText, 1, 4);
-        FlowLayoutPanel connectionButtons = CreateButtonRow(discoverButton, remoteSearchButton, disconnectButton);
+        FlowLayoutPanel connectionButtons = CreateButtonRow(discoverButton, remoteSearchButton, _trayModeButton, disconnectButton);
         connectionGrid.Controls.Add(connectionButtons, 0, 5);
         connectionGrid.SetColumnSpan(connectionButtons, 2);
         _connectionBox.Controls.Add(connectionGrid);
@@ -468,6 +576,7 @@ public sealed class MainForm : Form
         }
 
         _client = null;
+        _remoteControlBanner.Visible = false;
 
         SetConnectionStatus("Chưa kết nối");
         SetScreenStatus("Đang chờ");
@@ -550,7 +659,7 @@ public sealed class MainForm : Form
                 WebcamCaptureResult result = _webcamCapture.TryCaptureJpeg(_policy.WebcamJpegQuality);
                 if (result.IsSuccess && result.Jpeg is not null)
                 {
-                    await _client.SendWebcamFrameAsync(result.Jpeg);
+                    await _client.SendWebcamFrameAsync(result.Jpeg, _webcamCapture.SelectedCameraId);
                     _lastSentWebcamIssue = "";
                     SetWebcamStatus("Đang hoạt động");
                 }
@@ -574,18 +683,33 @@ public sealed class MainForm : Form
 
     private async Task ScanPolicyAsync()
     {
-        foreach (Violation violation in _processMonitor.ScanAndEnforce(_policy.BlockedProcesses, _policy.BlockedWindowKeywords))
+        foreach (Violation violation in _processMonitor.ScanAndEnforce(
+            _policy.BlockedProcesses,
+            _policy.BlockedWindowKeywords,
+            _policy.BlockedAiCliTools,
+            _policy.BlockedProxyTools,
+            _policy.BlockedIdeExtensions))
         {
             Log($"Vi phạm phần mềm: {violation.ProcessName} {violation.Action}");
             if (_client is not null)
             {
                 await _client.SendViolationAsync(violation.ProcessName, violation.WindowTitle, violation.Action);
+                await _client.SendActivityEventAsync("policy_violation", new Dictionary<string, string>
+                {
+                    ["processName"] = violation.ProcessName,
+                    ["windowTitle"] = violation.WindowTitle,
+                    ["ruleKind"] = violation.RuleKind,
+                    ["rule"] = violation.Rule,
+                    ["action"] = violation.Action,
+                    ["commandLine"] = violation.CommandLine
+                });
             }
         }
 
-        if (_policy.BlockedWindowKeywords.Count > 0)
+        List<string> websiteKeywords = _policy.BlockedWindowKeywords.Concat(_policy.BlockedWebsiteHosts).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (websiteKeywords.Count > 0)
         {
-            foreach (WebsiteViolation violation in _websiteMonitor.ScanAndEnforce(_policy.BlockedWindowKeywords, _policy.AllowedWebsiteHosts))
+            foreach (WebsiteViolation violation in _websiteMonitor.ScanAndEnforce(websiteKeywords, _policy.AllowedWebsiteHosts))
             {
                 Log($"Đã chặn website theo từ khóa cấm: {violation.ProcessName}");
                 if (_client is not null)
@@ -768,6 +892,28 @@ public sealed class MainForm : Form
             case MessageType.TeacherFrame:
                 BeginInvoke(() => ShowTeacherFrame(frame.Payload));
                 break;
+            case MessageType.TeacherBroadcastStop:
+                BeginInvoke(CloseTeacherFrame);
+                break;
+            case MessageType.WebcamDevices:
+                if (_client is not null)
+                {
+                    await _client.SendWebcamDevicesAsync(_webcamCapture.ProbeDevices());
+                }
+                break;
+            case MessageType.WebcamSelect:
+                BeginInvoke(() =>
+                {
+                    string cameraId = frame.Envelope.Metadata.GetValueOrDefault("cameraId", "");
+                    _webcamCapture.SelectCamera(cameraId);
+                    _lastSentWebcamIssue = "";
+                    SetWebcamStatus($"Đã chọn {cameraId}");
+                });
+                if (_client is not null)
+                {
+                    await _client.SendWebcamDevicesAsync(_webcamCapture.ProbeDevices());
+                }
+                break;
             case MessageType.FileDistributionStart:
                 BeginInvoke(() => StartDistributedFile(frame.Envelope.Metadata.GetValueOrDefault("fileName", "teacher-file.bin")));
                 break;
@@ -788,6 +934,35 @@ public sealed class MainForm : Form
                 break;
             case MessageType.RemoteTextInput:
                 BeginInvoke(() => RemoteInputService.TypeText(frame.Envelope.Metadata.GetValueOrDefault("text", "")));
+                break;
+            case MessageType.RemoteControlStart:
+                BeginInvoke(() =>
+                {
+                    _remoteControlBanner.Visible = true;
+                    Log("Giáo viên đang điều khiển máy này.");
+                });
+                break;
+            case MessageType.RemoteControlStop:
+                BeginInvoke(() =>
+                {
+                    _remoteControlBanner.Visible = false;
+                    Log("Giáo viên đã dừng điều khiển máy này.");
+                });
+                break;
+            case MessageType.RemotePointer:
+                BeginInvoke(() => RemoteInputService.Pointer(
+                    frame.Envelope.Metadata.GetValueOrDefault("action", "move"),
+                    frame.Envelope.Metadata.GetValueOrDefault("relativeX", "0.5"),
+                    frame.Envelope.Metadata.GetValueOrDefault("relativeY", "0.5"),
+                    frame.Envelope.Metadata.GetValueOrDefault("button", "left"),
+                    frame.Envelope.Metadata.GetValueOrDefault("wheelDelta", "0")));
+                break;
+            case MessageType.RemoteKey:
+                BeginInvoke(() => RemoteInputService.Key(
+                    frame.Envelope.Metadata.GetValueOrDefault("action", "text"),
+                    frame.Envelope.Metadata.GetValueOrDefault("key", ""),
+                    frame.Envelope.Metadata.GetValueOrDefault("text", ""),
+                    frame.Envelope.Metadata.GetValueOrDefault("modifiers", "")));
                 break;
             case MessageType.ClipboardSet:
                 BeginInvoke(() =>
@@ -821,6 +996,13 @@ public sealed class MainForm : Form
     {
         _broadcastViewer ??= new BroadcastViewerForm();
         _broadcastViewer.ShowFrame(jpeg);
+    }
+
+    private void CloseTeacherFrame()
+    {
+        _broadcastViewer?.Close();
+        _broadcastViewer = null;
+        Log("Giáo viên đã dừng chia sẻ màn hình.");
     }
 
     private void StartDistributedFile(string fileName)
@@ -926,10 +1108,10 @@ public sealed class MainForm : Form
 
     private void ApplyPolicyRuntime()
     {
-        _screenTimer.Interval = Math.Clamp(_policy.ScreenIntervalMs, 250, 10000);
+        _screenTimer.Interval = Math.Clamp(_policy.ScreenIntervalMs, 120, 10000);
         _webcamTimer.Interval = _policy.WebcamIntervalMs <= 0
-            ? 1000
-            : Math.Clamp(_policy.WebcamIntervalMs, 250, 10000);
+            ? 33
+            : Math.Clamp(_policy.WebcamIntervalMs, 16, 10000);
 
         if (_client?.IsConnected == true && _policy.WebcamEnabled)
         {
@@ -1091,7 +1273,11 @@ public sealed class MainForm : Form
             ConnectionMode = lookup.ConnectionMode,
             BlockClipboardShortcuts = lookup.BlockClipboardShortcuts,
             WebsitePolicyMode = lookup.WebsitePolicyMode,
-            AllowedWebsiteHosts = lookup.AllowedWebsiteHosts
+            AllowedWebsiteHosts = lookup.AllowedWebsiteHosts,
+            BlockedAiCliTools = lookup.BlockedAiCliTools,
+            BlockedProxyTools = lookup.BlockedProxyTools,
+            BlockedIdeExtensions = lookup.BlockedIdeExtensions,
+            BlockedWebsiteHosts = lookup.BlockedWebsiteHosts
         };
     }
 
@@ -1136,6 +1322,7 @@ public sealed class MainForm : Form
         _sessionSummaryLabel.Text = $"Phiên {_sessionIdText.Text.Trim()}";
         ApplyPolicyRuntime();
         StartTimers();
+        await _client.SendWebcamDevicesAsync(_webcamCapture.ProbeDevices());
         if (_policy.WebcamEnabled && _policy.WebcamSnapshotOnConnect)
         {
             await SendWebcamAsync();
