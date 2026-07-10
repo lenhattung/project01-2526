@@ -502,7 +502,7 @@ internal sealed class TeacherSocketServer : ITeacherSessionTransport
                     client.State.SelectedCameraId = frame.Envelope.Metadata.GetValueOrDefault("cameraId", client.State.SelectedCameraId);
                     old?.Dispose();
                 });
-                if (!client.IsRateLimited("webcam_ui", TimeSpan.FromMilliseconds(33)))
+                if (!client.IsRateLimited("webcam_ui", TimeSpan.FromMilliseconds(50)))
                 {
                     _studentChanged(client.State);
                 }

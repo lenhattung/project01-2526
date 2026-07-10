@@ -20,8 +20,8 @@ public sealed class MainForm : Form
     private readonly NumericUpDown _screenQualityInput = new() { Minimum = 20, Maximum = 85, Value = 58, Width = 80 };
     private readonly CheckBox _webcamEnabledCheck = new() { Text = "Theo dõi webcam", Checked = true, AutoSize = true };
     private readonly CheckBox _webcamSnapshotCheck = new() { Text = "Chụp ảnh khi vào", Checked = true, AutoSize = true };
-    private readonly NumericUpDown _webcamIntervalInput = new() { Minimum = 0, Maximum = 10000, Value = 33, Width = 90 };
-    private readonly NumericUpDown _webcamQualityInput = new() { Minimum = 25, Maximum = 90, Value = 42, Width = 80 };
+    private readonly NumericUpDown _webcamIntervalInput = new() { Minimum = 0, Maximum = 10000, Value = 50, Width = 90 };
+    private readonly NumericUpDown _webcamQualityInput = new() { Minimum = 25, Maximum = 90, Value = 45, Width = 80 };
     private readonly NumericUpDown _examDurationMinutesInput = new() { Minimum = 0, Maximum = 1440, Value = 0, Width = 90 };
     private readonly CheckBox _allowLateSubmissionCheck = new() { Text = "Cho phép nộp sau khi hết giờ", AutoSize = true };
     private readonly CheckBox _blockClipboardCheck = new() { Text = "Chặn copy/paste", Checked = true, AutoSize = true };

@@ -631,7 +631,7 @@ public sealed class MainForm : Form
     {
         await SafeSendAsync(async () =>
         {
-            byte[] jpeg = ScreenCaptureService.CapturePrimaryScreenJpeg(_policy.ScreenJpegQuality);
+            byte[] jpeg = await Task.Run(() => ScreenCaptureService.CapturePrimaryScreenJpeg(_policy.ScreenJpegQuality));
             if (_client is not null)
             {
                 await _client.SendScreenFrameAsync(jpeg);
@@ -656,7 +656,7 @@ public sealed class MainForm : Form
         {
             await SafeSendAsync(async () =>
             {
-                WebcamCaptureResult result = _webcamCapture.TryCaptureJpeg(_policy.WebcamJpegQuality);
+                WebcamCaptureResult result = await Task.Run(() => _webcamCapture.TryCaptureJpeg(_policy.WebcamJpegQuality));
                 if (result.IsSuccess && result.Jpeg is not null)
                 {
                     await _client.SendWebcamFrameAsync(result.Jpeg, _webcamCapture.SelectedCameraId);
@@ -1110,8 +1110,8 @@ public sealed class MainForm : Form
     {
         _screenTimer.Interval = Math.Clamp(_policy.ScreenIntervalMs, 120, 10000);
         _webcamTimer.Interval = _policy.WebcamIntervalMs <= 0
-            ? 33
-            : Math.Clamp(_policy.WebcamIntervalMs, 16, 10000);
+            ? 50
+            : Math.Clamp(_policy.WebcamIntervalMs, 40, 10000);
 
         if (_client?.IsConnected == true && _policy.WebcamEnabled)
         {

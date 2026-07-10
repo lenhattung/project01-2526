@@ -5,9 +5,9 @@ namespace StudentForm;
 internal sealed class WebcamCaptureService : IDisposable
 {
     private const int MaxCameraIndex = 15;
-    private const int CaptureWidth = 320;
-    private const int CaptureHeight = 180;
-    private const int CaptureFps = 30;
+    private const int CaptureWidth = 400;
+    private const int CaptureHeight = 225;
+    private const int CaptureFps = 20;
     private VideoCapture? _capture;
     private string? _lastError;
     private int _selectedCameraIndex;
