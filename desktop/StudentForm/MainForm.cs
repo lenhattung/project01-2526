@@ -46,7 +46,7 @@ public sealed class MainForm : Form
     private readonly System.Windows.Forms.Timer _heartbeatTimer = new() { Interval = 5000 };
     private readonly System.Windows.Forms.Timer _screenTimer = new() { Interval = 500 };
     private readonly System.Windows.Forms.Timer _webcamTimer = new();
-    private readonly System.Windows.Forms.Timer _processTimer = new() { Interval = 2000 };
+    private readonly System.Windows.Forms.Timer _processTimer = new() { Interval = 5000 };
     private readonly ProcessMonitor _processMonitor = new();
     private readonly WebsitePolicyMonitor _websiteMonitor = new();
     private readonly WebcamCaptureService _webcamCapture = new();
@@ -69,7 +69,9 @@ public sealed class MainForm : Form
     private string _lastWebcamStatusMessage = "";
     private string _lastSentWebcamIssue = "";
     private DateTimeOffset _lastClipboardEventAt = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastPolicyLogAt = DateTimeOffset.MinValue;
     private int _webcamSendBusy;
+    private int _policyScanBusy;
     private CancellationTokenSource? _reconnectCts;
     private NotifyIcon? _trayIcon;
     private string? _lastResolvedHost;
@@ -683,47 +685,72 @@ public sealed class MainForm : Form
 
     private async Task ScanPolicyAsync()
     {
-        foreach (Violation violation in _processMonitor.ScanAndEnforce(
-            _policy.BlockedProcesses,
-            _policy.BlockedWindowKeywords,
-            _policy.BlockedAiCliTools,
-            _policy.BlockedProxyTools,
-            _policy.BlockedIdeExtensions))
+        if (Interlocked.Exchange(ref _policyScanBusy, 1) == 1)
         {
-            Log($"Vi phạm phần mềm: {violation.ProcessName} {violation.Action}");
-            if (_client is not null)
-            {
-                await _client.SendViolationAsync(violation.ProcessName, violation.WindowTitle, violation.Action);
-                await _client.SendActivityEventAsync("policy_violation", new Dictionary<string, string>
-                {
-                    ["processName"] = violation.ProcessName,
-                    ["windowTitle"] = violation.WindowTitle,
-                    ["ruleKind"] = violation.RuleKind,
-                    ["rule"] = violation.Rule,
-                    ["action"] = violation.Action,
-                    ["commandLine"] = violation.CommandLine
-                });
-            }
+            return;
         }
 
-        List<string> websiteKeywords = _policy.BlockedWindowKeywords.Concat(_policy.BlockedWebsiteHosts).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        if (websiteKeywords.Count > 0)
+        try
         {
-            foreach (WebsiteViolation violation in _websiteMonitor.ScanAndEnforce(websiteKeywords, _policy.AllowedWebsiteHosts))
+            Violation[] violations = await Task.Run(() => _processMonitor.ScanAndEnforce(
+                _policy.BlockedProcesses,
+                _policy.BlockedWindowKeywords,
+                _policy.BlockedAiCliTools,
+                _policy.BlockedProxyTools,
+                _policy.BlockedIdeExtensions).ToArray());
+
+            foreach (Violation violation in violations)
             {
-                Log($"Đã chặn website theo từ khóa cấm: {violation.ProcessName}");
+                if (DateTimeOffset.Now - _lastPolicyLogAt > TimeSpan.FromMilliseconds(500))
+                {
+                    Log($"Vi phạm phần mềm: {violation.ProcessName} {violation.Action}");
+                    _lastPolicyLogAt = DateTimeOffset.Now;
+                }
+
                 if (_client is not null)
                 {
-                    await _client.SendActivityEventAsync("website_blocked", new Dictionary<string, string>
+                    await _client.SendViolationAsync(violation.ProcessName, violation.WindowTitle, violation.Action);
+                    await _client.SendActivityEventAsync("policy_violation", new Dictionary<string, string>
                     {
                         ["processName"] = violation.ProcessName,
                         ["windowTitle"] = violation.WindowTitle,
-                        ["allowedHosts"] = violation.AllowedHosts,
-                        ["blockedKeywords"] = violation.BlockedKeywords,
-                        ["action"] = violation.Action
+                        ["ruleKind"] = violation.RuleKind,
+                        ["rule"] = violation.Rule,
+                        ["action"] = violation.Action,
+                        ["commandLine"] = violation.CommandLine
                     });
                 }
             }
+
+            List<string> websiteKeywords = _policy.BlockedWindowKeywords.Concat(_policy.BlockedWebsiteHosts).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (websiteKeywords.Count > 0)
+            {
+                WebsiteViolation[] websiteViolations = await Task.Run(() => _websiteMonitor.ScanAndEnforce(websiteKeywords, _policy.AllowedWebsiteHosts).ToArray());
+                foreach (WebsiteViolation violation in websiteViolations)
+                {
+                    if (DateTimeOffset.Now - _lastPolicyLogAt > TimeSpan.FromMilliseconds(500))
+                    {
+                        Log($"Đã chặn website theo từ khóa cấm: {violation.ProcessName}");
+                        _lastPolicyLogAt = DateTimeOffset.Now;
+                    }
+
+                    if (_client is not null)
+                    {
+                        await _client.SendActivityEventAsync("website_blocked", new Dictionary<string, string>
+                        {
+                            ["processName"] = violation.ProcessName,
+                            ["windowTitle"] = violation.WindowTitle,
+                            ["allowedHosts"] = violation.AllowedHosts,
+                            ["blockedKeywords"] = violation.BlockedKeywords,
+                            ["action"] = violation.Action
+                        });
+                    }
+                }
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _policyScanBusy, 0);
         }
     }
 

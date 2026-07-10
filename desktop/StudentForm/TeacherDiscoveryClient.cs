@@ -12,7 +12,7 @@ internal static class TeacherDiscoveryClient
         using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(timeout);
 
-        using UdpClient udpClient = new(TeacherDiscoveryPort);
+        using UdpClient udpClient = CreateClient();
         udpClient.EnableBroadcast = true;
 
         while (!timeoutCts.Token.IsCancellationRequested)
@@ -48,4 +48,12 @@ internal static class TeacherDiscoveryClient
     }
 
     private const int TeacherDiscoveryPort = 9091;
+
+    private static UdpClient CreateClient()
+    {
+        UdpClient client = new(AddressFamily.InterNetwork);
+        client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+        client.Client.Bind(new IPEndPoint(IPAddress.Any, TeacherDiscoveryPort));
+        return client;
+    }
 }

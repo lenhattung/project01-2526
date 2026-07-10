@@ -92,16 +92,25 @@ internal sealed class ProcessMonitor
             }
         });
 
-        foreach (ExtensionSnapshot extension in blockedExtensions)
+        string[] ruleNames = blockedExtensions
+            .Select(extension => extension.Rule)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(rule => rule, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        string reportKey = $"extension-summary:{string.Join(';', ruleNames)}:{ideRunning}";
+        if (!_reported.Add(reportKey))
         {
-            string reportKey = $"extension:{extension.Path}:{ideRunning}";
-            if (!_reported.Add(reportKey))
-            {
-                continue;
-            }
-
-            yield return new Violation("IDE extension", extension.Path, "reported", "ide_extension", extension.Rule, "");
+            yield break;
         }
+
+        string detail = string.Join("; ", blockedExtensions.Select(extension => Path.GetFileName(extension.Path)).Distinct(StringComparer.OrdinalIgnoreCase));
+        yield return new Violation(
+            "IDE extension",
+            detail,
+            "reported",
+            "ide_extension",
+            string.Join(", ", ruleNames),
+            "");
     }
 
     private static IEnumerable<string> EnumerateExtensionFolders()
