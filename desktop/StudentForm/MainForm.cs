@@ -71,6 +71,7 @@ public sealed class MainForm : Form
     private DateTimeOffset _lastClipboardEventAt = DateTimeOffset.MinValue;
     private DateTimeOffset _lastPolicyLogAt = DateTimeOffset.MinValue;
     private int _webcamSendBusy;
+    private int _screenSendBusy;
     private int _policyScanBusy;
     private CancellationTokenSource? _reconnectCts;
     private NotifyIcon? _trayIcon;
@@ -631,15 +632,27 @@ public sealed class MainForm : Form
 
     private async Task SendScreenAsync()
     {
-        await SafeSendAsync(async () =>
+        if (_client is null || !_client.IsConnected || Interlocked.Exchange(ref _screenSendBusy, 1) == 1)
         {
-            byte[] jpeg = await Task.Run(() => ScreenCaptureService.CapturePrimaryScreenJpeg(_policy.ScreenJpegQuality));
-            if (_client is not null)
+            return;
+        }
+
+        try
+        {
+            await SafeSendAsync(async () =>
             {
-                await _client.SendScreenFrameAsync(jpeg);
-                SetScreenStatus("Đang gửi");
-            }
-        });
+                byte[] jpeg = await Task.Run(() => ScreenCaptureService.CapturePrimaryScreenJpeg(_policy.ScreenJpegQuality));
+                if (_client is not null && _client.IsConnected)
+                {
+                    await _client.SendScreenFrameAsync(jpeg);
+                    SetScreenStatus("Đang gửi");
+                }
+            });
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _screenSendBusy, 0);
+        }
     }
 
     private async Task SendWebcamAsync()

@@ -67,6 +67,8 @@ internal sealed class TeacherRelayClient : ITeacherSessionTransport
         _sessionToken = sessionToken;
         _cts = new CancellationTokenSource();
         _tcpClient = new TcpClient();
+        _tcpClient.NoDelay = true;
+        _tcpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
         await _tcpClient.ConnectAsync(host, port, _cts.Token);
         _stream = _tcpClient.GetStream();
 
@@ -307,6 +309,14 @@ internal sealed class TeacherRelayClient : ITeacherSessionTransport
                     continue;
                 }
 
+                if (frame.Envelope.MessageType == MessageType.Error)
+                {
+                    string code = frame.Envelope.Metadata.GetValueOrDefault("code", "UNKNOWN");
+                    string message = frame.Envelope.Metadata.GetValueOrDefault("message", "Relay tu choi ket noi.");
+                    _log($"Relay từ chối kết nối [{code}]: {message}");
+                    continue;
+                }
+
                 if (!frame.Envelope.SessionId.Equals(_sessionId, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
@@ -415,21 +425,27 @@ internal sealed class TeacherRelayClient : ITeacherSessionTransport
             case MessageType.ScreenFrame:
                 UpdateImage(frame.Payload, image =>
                 {
-                    Image? old = client.State.LatestFrame;
-                    client.State.LatestFrame = image;
-                    old?.Dispose();
+                    lock (client.State.SyncRoot)
+                    {
+                        Image? old = client.State.LatestFrame;
+                        client.State.LatestFrame = image;
+                        old?.Dispose();
+                    }
                 });
                 _studentChanged(client.State);
                 break;
             case MessageType.WebcamFrame:
                 UpdateImage(frame.Payload, image =>
                 {
-                    Image? old = client.State.LatestWebcamFrame;
-                    client.State.LatestWebcamFrame = image;
-                    client.State.LastWebcamSeen = DateTimeOffset.Now;
-                    client.State.WebcamStatus = "Đang hoạt động";
-                    client.State.SelectedCameraId = frame.Envelope.Metadata.GetValueOrDefault("cameraId", client.State.SelectedCameraId);
-                    old?.Dispose();
+                    lock (client.State.SyncRoot)
+                    {
+                        Image? old = client.State.LatestWebcamFrame;
+                        client.State.LatestWebcamFrame = image;
+                        client.State.LastWebcamSeen = DateTimeOffset.Now;
+                        client.State.WebcamStatus = "Đang hoạt động";
+                        client.State.SelectedCameraId = frame.Envelope.Metadata.GetValueOrDefault("cameraId", client.State.SelectedCameraId);
+                        old?.Dispose();
+                    }
                 });
                 if (!client.IsRateLimited("webcam_ui", TimeSpan.FromMilliseconds(50)))
                 {

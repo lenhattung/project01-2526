@@ -2,6 +2,8 @@ namespace TeacherForm;
 
 internal sealed class StudentState
 {
+    public object SyncRoot { get; } = new();
+
     public string ConnectionId { get; init; } = "";
     public string StudentId { get; init; } = "";
     public string StudentCode { get; set; } = "";

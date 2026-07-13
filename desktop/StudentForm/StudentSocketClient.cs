@@ -58,6 +58,8 @@ internal sealed class StudentSocketClient : IAsyncDisposable
     {
         _cts = new CancellationTokenSource();
         _tcpClient = new TcpClient();
+        _tcpClient.NoDelay = true;
+        _tcpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
         await _tcpClient.ConnectAsync(host, port, _cts.Token);
         _stream = _tcpClient.GetStream();
 
@@ -286,16 +288,23 @@ internal sealed class StudentSocketClient : IAsyncDisposable
                 else if (frame.Envelope.MessageType == MessageType.Error)
                 {
                     string code = frame.Envelope.Metadata.GetValueOrDefault("code", "");
+                    string message = frame.Envelope.Metadata.GetValueOrDefault("message", "May chu tra ve loi.");
+                    _log($"Relay/giáo viên từ chối kết nối [{code}]: {message}");
                     if (code.Equals("DUPLICATE_STUDENT", StringComparison.OrdinalIgnoreCase))
                     {
-                        string message = frame.Envelope.Metadata.GetValueOrDefault("message", "May giao vien tra ve loi.");
                         _log(message);
                         await DisconnectAsync();
                         _connectionClosed(message);
                         return;
                     }
 
-                    _log(frame.Envelope.Metadata.GetValueOrDefault("message", "Máy giáo viên trả về lỗi."));
+                    if (_useRelay && (code.Equals("INVALID_RELAY_SECRET", StringComparison.OrdinalIgnoreCase) ||
+                                      code.Equals("INVALID_HELLO", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        await DisconnectAsync();
+                        _connectionClosed(message);
+                        return;
+                    }
                 }
                 else
                 {

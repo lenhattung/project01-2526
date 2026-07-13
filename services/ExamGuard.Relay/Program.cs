@@ -15,6 +15,8 @@ Console.WriteLine($"ExamGuard relay listening on TCP {port}.");
 while (true)
 {
     TcpClient client = await listener.AcceptTcpClientAsync();
+    client.NoDelay = true;
+    client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
     _ = Task.Run(() => hub.HandleClientAsync(client));
 }
 
@@ -39,11 +41,14 @@ internal sealed class RelayHub
     {
         string remote = tcpClient.Client.RemoteEndPoint?.ToString() ?? "unknown";
         RelayClient? relayClient = null;
+        NetworkStream? stream = null;
+        ReceivedFrame? hello = null;
+        bool joinedRoom = false;
 
         try
         {
-            await using NetworkStream stream = tcpClient.GetStream();
-            ReceivedFrame? hello = await FramedSocketProtocol.ReceiveAsync(stream);
+            stream = tcpClient.GetStream();
+            hello = await FramedSocketProtocol.ReceiveAsync(stream);
             if (hello?.Envelope.MessageType != MessageType.Hello)
             {
                 throw new InvalidDataException("First frame must be HELLO.");
@@ -60,6 +65,7 @@ internal sealed class RelayHub
             relayClient = new RelayClient(tcpClient, stream, hello.Envelope.StudentId, role, remote, hello);
             RelayRoom room = _rooms.GetOrAdd(sessionId, static id => new RelayRoom(id));
             room.Join(relayClient);
+            joinedRoom = true;
             Console.WriteLine($"{role} {relayClient.DisplayId} joined session {sessionId} from {remote}.");
 
             await relayClient.SendAsync(MessageType.HelloAck, sessionId, new()
@@ -104,6 +110,31 @@ internal sealed class RelayHub
         }
         catch (Exception ex)
         {
+            if (!joinedRoom && stream is not null)
+            {
+                try
+                {
+                    string sessionId = hello?.Envelope.SessionId ?? "";
+                    string code = ex is UnauthorizedAccessException
+                        ? "INVALID_RELAY_SECRET"
+                        : "INVALID_HELLO";
+                    await FramedSocketProtocol.SendAsync(
+                        stream,
+                        FramedSocketProtocol.CreateEnvelope(MessageType.Error, sessionId, metadata: new()
+                        {
+                            ["code"] = code,
+                            ["message"] = code == "INVALID_RELAY_SECRET"
+                                ? "Mã relay không khớp cấu hình máy chủ."
+                                : $"Relay từ chối HELLO: {ex.Message}"
+                        }),
+                        null);
+                }
+                catch
+                {
+                    // The peer may have already closed the socket.
+                }
+            }
+
             Console.WriteLine($"Relay client {remote} closed: {ex.Message}");
         }
         finally
@@ -160,13 +191,13 @@ internal sealed class RelayRoom
                 return;
             }
 
-            string studentId = string.IsNullOrWhiteSpace(client.StudentId) ? client.RemoteEndPoint : client.StudentId;
-            if (_students.TryGetValue(studentId, out RelayClient? existing))
+            string connectionId = string.IsNullOrWhiteSpace(client.ConnectionId) ? client.RemoteEndPoint : client.ConnectionId;
+            if (_students.TryGetValue(connectionId, out RelayClient? existing))
             {
                 existing.Dispose();
             }
 
-            _students[studentId] = client;
+            _students[connectionId] = client;
         }
     }
 
@@ -236,8 +267,17 @@ internal sealed class RelayRoom
                 return _teacher is null ? [] : [_teacher];
             }
 
+            string targetConnectionId = !string.IsNullOrWhiteSpace(frame.Envelope.ConnectionId)
+                ? frame.Envelope.ConnectionId
+                : frame.Envelope.Metadata.GetValueOrDefault("connectionId", "");
+            if (!string.IsNullOrWhiteSpace(targetConnectionId) &&
+                _students.TryGetValue(targetConnectionId, out RelayClient? student))
+            {
+                return [student];
+            }
+
             if (!string.IsNullOrWhiteSpace(frame.Envelope.StudentId) &&
-                _students.TryGetValue(frame.Envelope.StudentId, out RelayClient? student))
+                (student = _students.Values.FirstOrDefault(x => string.Equals(x.StudentId, frame.Envelope.StudentId, StringComparison.OrdinalIgnoreCase))) is not null)
             {
                 return [student];
             }
@@ -258,12 +298,16 @@ internal sealed class RelayClient : IDisposable
         _tcpClient = tcpClient;
         _stream = stream;
         StudentId = studentId;
+        ConnectionId = !string.IsNullOrWhiteSpace(helloFrame.Envelope.ConnectionId)
+            ? helloFrame.Envelope.ConnectionId
+            : helloFrame.Envelope.Metadata.GetValueOrDefault("connectionId", studentId);
         Role = role;
         RemoteEndPoint = remoteEndPoint;
         HelloFrame = helloFrame;
     }
 
     public string StudentId { get; }
+    public string ConnectionId { get; }
     public string Role { get; }
     public string RemoteEndPoint { get; }
     public ReceivedFrame HelloFrame { get; }

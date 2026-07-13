@@ -94,6 +94,8 @@ public sealed class MainForm : Form
     private readonly Button _trayModeButton = new() { Text = "Chạy ngầm: Tắt", Width = 145, Tag = "wifi" };
 
     private readonly Dictionary<string, StudentCard> _cards = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _queuedStudentUpdates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _studentUpdateSync = new();
     private readonly Dictionary<string, StudentState> _studentStates = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, SessionRosterStudentDto> _sessionRoster = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, FloatingImageViewerForm> _liveViewers = new(StringComparer.OrdinalIgnoreCase);
@@ -1312,7 +1314,7 @@ public sealed class MainForm : Form
         {
             TeacherRelayClient relay = new(
                 BuildPolicy,
-                state => BeginInvoke(() => UpsertStudent(state)),
+                QueueStudentUpdate,
                 message => BeginInvoke(() => Log(message)),
                 (state, process, title) =>
                 {
@@ -1340,7 +1342,7 @@ public sealed class MainForm : Form
         {
             TeacherSocketServer server = new(
             BuildPolicy,
-            state => BeginInvoke(() => UpsertStudent(state)),
+            QueueStudentUpdate,
             message => BeginInvoke(() => Log(message)),
             (state, process, title) =>
             {
@@ -2105,6 +2107,41 @@ public sealed class MainForm : Form
         if (string.Equals(SelectedStudentId(), transportId, StringComparison.Ordinal))
         {
             ShowSelectedStudent();
+        }
+    }
+
+    private void QueueStudentUpdate(StudentState state)
+    {
+        string key = NormalizeStudentKey(state.StudentCodeOrId);
+        lock (_studentUpdateSync)
+        {
+            if (!_queuedStudentUpdates.Add(key))
+            {
+                return;
+            }
+        }
+
+        try
+        {
+            BeginInvoke(() =>
+            {
+                lock (_studentUpdateSync)
+                {
+                    _queuedStudentUpdates.Remove(key);
+                }
+
+                if (!IsDisposed && !Disposing)
+                {
+                    UpsertStudent(state);
+                }
+            });
+        }
+        catch (InvalidOperationException)
+        {
+            lock (_studentUpdateSync)
+            {
+                _queuedStudentUpdates.Remove(key);
+            }
         }
     }
 
@@ -2899,34 +2936,37 @@ public sealed class MainForm : Form
 
         public void Update(StudentState state)
         {
-            CurrentWebcamStatus = state.WebcamStatus;
-            DisplayName = state.DisplayName;
-            _handRaised = state.HandRaised;
-            _isOnline = state.IsOnline;
-            string icons = $"{(state.HandRaised ? " ✋" : "")}{(state.UnreadChatCount > 0 ? " 💬" : "")}";
-            _caption.Text = $"{state.DisplayName}{icons}\n{(state.IsOnline ? "Trực tuyến" : "Mất kết nối")} | {state.SubmissionStatus}";
-            BackColor = state.IsOnline ? Color.White : Color.FromArgb(255, 225, 225);
-            _caption.ForeColor = state.IsOnline ? Color.FromArgb(25, 43, 57) : Color.FromArgb(150, 25, 25);
-
-            if (state.LatestFrame is not null)
+            lock (state.SyncRoot)
             {
-                Image? old = _picture.Image;
-                _picture.Image = (Image)state.LatestFrame.Clone();
-                old?.Dispose();
-            }
+                CurrentWebcamStatus = state.WebcamStatus;
+                DisplayName = state.DisplayName;
+                _handRaised = state.HandRaised;
+                _isOnline = state.IsOnline;
+                string icons = $"{(state.HandRaised ? " ✋" : "")}{(state.UnreadChatCount > 0 ? " 💬" : "")}";
+                _caption.Text = $"{state.DisplayName}{icons}\n{(state.IsOnline ? "Trực tuyến" : "Mất kết nối")} | {state.SubmissionStatus}";
+                BackColor = state.IsOnline ? Color.White : Color.FromArgb(255, 225, 225);
+                _caption.ForeColor = state.IsOnline ? Color.FromArgb(25, 43, 57) : Color.FromArgb(150, 25, 25);
 
-            if (state.LatestWebcamFrame is not null)
-            {
-                Image? oldCam = CurrentWebcamImage;
-                Image? oldThumb = _webcamThumbnail.Image;
-                CurrentWebcamImage = (Image)state.LatestWebcamFrame.Clone();
-                _webcamThumbnail.Image = CurrentWebcamImage;
-                oldCam?.Dispose();
-                if (!ReferenceEquals(oldThumb, oldCam))
+                if (state.LatestFrame is not null)
                 {
-                    oldThumb?.Dispose();
+                    Image? old = _picture.Image;
+                    _picture.Image = (Image)state.LatestFrame.Clone();
+                    old?.Dispose();
                 }
-                _webcamThumbnail.Visible = true;
+
+                if (state.LatestWebcamFrame is not null)
+                {
+                    Image? oldCam = CurrentWebcamImage;
+                    Image? oldThumb = _webcamThumbnail.Image;
+                    CurrentWebcamImage = (Image)state.LatestWebcamFrame.Clone();
+                    _webcamThumbnail.Image = CurrentWebcamImage;
+                    oldCam?.Dispose();
+                    if (!ReferenceEquals(oldThumb, oldCam))
+                    {
+                        oldThumb?.Dispose();
+                    }
+                    _webcamThumbnail.Visible = true;
+                }
             }
 
             if (_handRaised || !_isOnline)
