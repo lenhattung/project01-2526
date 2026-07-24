@@ -12,15 +12,15 @@ public sealed class MainForm : Form
     private readonly NumericUpDown _portInput = new() { Minimum = 1024, Maximum = 65535, Value = 9090, Width = 90 };
     private readonly ComboBox _connectionModePicker = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 180 };
     private readonly TextBox _publishedHostText = new() { Width = 180 };
-    private readonly TextBox _relayHostText = new() { Text = "103.180.138.225", Width = 180 };
+    private readonly TextBox _relayHostText = new() { Text = AppRuntime.RelayHost, Width = 180 };
     private readonly NumericUpDown _relayPortInput = new() { Minimum = 1024, Maximum = 65535, Value = 9090, Width = 90 };
-    private readonly TextBox _relaySecretText = new() { Text = "Da39qVAylFO0Gl4kVxMHm1CWz7JB9z_VUUl2wBMjCudY1or4i-Oyofmb_c1gyGgV", Width = 220, UseSystemPasswordChar = true };
+    private readonly TextBox _relaySecretText = new() { Text = AppRuntime.RelaySecret, Width = 220, UseSystemPasswordChar = true };
 
-    private readonly NumericUpDown _screenIntervalInput = new() { Minimum = 120, Maximum = 10000, Value = 500, Width = 90 };
-    private readonly NumericUpDown _screenQualityInput = new() { Minimum = 20, Maximum = 85, Value = 58, Width = 80 };
+    private readonly NumericUpDown _screenIntervalInput = new() { Minimum = 250, Maximum = 10000, Value = 500, Width = 90 };
+    private readonly NumericUpDown _screenQualityInput = new() { Minimum = 20, Maximum = 85, Value = 40, Width = 80 };
     private readonly CheckBox _webcamEnabledCheck = new() { Text = "Theo dõi webcam", Checked = true, AutoSize = true };
     private readonly CheckBox _webcamSnapshotCheck = new() { Text = "Chụp ảnh khi vào", Checked = true, AutoSize = true };
-    private readonly NumericUpDown _webcamIntervalInput = new() { Minimum = 0, Maximum = 10000, Value = 50, Width = 90 };
+    private readonly NumericUpDown _webcamIntervalInput = new() { Minimum = 250, Maximum = 10000, Value = 500, Width = 90 };
     private readonly NumericUpDown _webcamQualityInput = new() { Minimum = 25, Maximum = 90, Value = 45, Width = 80 };
     private readonly NumericUpDown _examDurationMinutesInput = new() { Minimum = 0, Maximum = 1440, Value = 0, Width = 90 };
     private readonly CheckBox _allowLateSubmissionCheck = new() { Text = "Cho phép nộp sau khi hết giờ", AutoSize = true };
@@ -33,7 +33,7 @@ public sealed class MainForm : Form
     private readonly TextBox _blockedWebsitesText = new() { Text = "chatgpt.com;claude.ai;gemini.google.com;grok.com;x.ai;deepseek.com;discord.com;telegram.org;web.whatsapp.com", Width = 320 };
     private readonly TextBox _allowedWebsitesText = new() { Text = "dntu.edu.vn", Width = 320 };
 
-    private readonly TextBox _backendUrlText = new() { Text = "http://103.180.138.225:8081", Width = 210 };
+    private readonly TextBox _backendUrlText = new() { Text = AppRuntime.BackendBaseUrl, Width = 210 };
     private readonly TextBox _backendUserText = new() { Text = "teacher", Width = 110 };
     private readonly TextBox _backendPasswordText = new() { Text = "teacher123", Width = 130, UseSystemPasswordChar = true };
     private readonly NumericUpDown _backendSessionIdInput = new() { Minimum = 0, Maximum = 1000000, Value = 1, Width = 90 };
@@ -2903,26 +2903,42 @@ public sealed class MainForm : Form
             BorderStyle = BorderStyle.FixedSingle,
             Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
-        private readonly Label _caption = new() { Dock = DockStyle.Bottom, Height = 44, TextAlign = ContentAlignment.MiddleCenter };
+        private readonly Label _nameLabel = new()
+        {
+            Dock = DockStyle.Bottom,
+            Height = 34,
+            TextAlign = ContentAlignment.MiddleCenter,
+            AutoEllipsis = false
+        };
+        private readonly Label _statusLabel = new()
+        {
+            Dock = DockStyle.Bottom,
+            Height = 24,
+            TextAlign = ContentAlignment.MiddleCenter,
+            AutoEllipsis = true
+        };
         private bool _handRaised;
         private bool _isOnline = true;
 
         public StudentCard(string studentId)
         {
             Width = 188;
-            Height = 150;
+            Height = 164;
             Margin = new Padding(6);
             Padding = new Padding(2);
             Cursor = Cursors.Hand;
-            _caption.Text = studentId;
+            _nameLabel.Text = FormatDisplayName(studentId);
+            _statusLabel.Text = "Trực tuyến | Chưa nộp";
             Controls.Add(_picture);
             Controls.Add(_webcamThumbnail);
-            Controls.Add(_caption);
+            Controls.Add(_nameLabel);
+            Controls.Add(_statusLabel);
             _picture.DoubleClick += (_, _) => ScreenDoubleClicked?.Invoke(this, EventArgs.Empty);
             _webcamThumbnail.DoubleClick += (_, _) => WebcamDoubleClicked?.Invoke(this, EventArgs.Empty);
             _picture.Click += (_, _) => OnClick(EventArgs.Empty);
             _webcamThumbnail.Click += (_, _) => OnClick(EventArgs.Empty);
-            _caption.Click += (_, _) => OnClick(EventArgs.Empty);
+            _nameLabel.Click += (_, _) => OnClick(EventArgs.Empty);
+            _statusLabel.Click += (_, _) => OnClick(EventArgs.Empty);
             Resize += (_, _) => PositionWebcamThumbnail();
             PositionWebcamThumbnail();
         }
@@ -2943,9 +2959,11 @@ public sealed class MainForm : Form
                 _handRaised = state.HandRaised;
                 _isOnline = state.IsOnline;
                 string icons = $"{(state.HandRaised ? " ✋" : "")}{(state.UnreadChatCount > 0 ? " 💬" : "")}";
-                _caption.Text = $"{state.DisplayName}{icons}\n{(state.IsOnline ? "Trực tuyến" : "Mất kết nối")} | {state.SubmissionStatus}";
+                _nameLabel.Text = FormatDisplayName($"{state.DisplayName}{icons}");
+                _statusLabel.Text = $"{(state.IsOnline ? "Trực tuyến" : "Mất kết nối")} | {state.SubmissionStatus}";
                 BackColor = state.IsOnline ? Color.White : Color.FromArgb(255, 225, 225);
-                _caption.ForeColor = state.IsOnline ? Color.FromArgb(25, 43, 57) : Color.FromArgb(150, 25, 25);
+                _nameLabel.ForeColor = state.IsOnline ? Color.FromArgb(25, 43, 57) : Color.FromArgb(150, 25, 25);
+                _statusLabel.ForeColor = state.IsOnline ? Color.FromArgb(86, 101, 115) : Color.FromArgb(150, 25, 25);
 
                 if (state.LatestFrame is not null)
                 {
@@ -2978,6 +2996,45 @@ public sealed class MainForm : Form
         private void PositionWebcamThumbnail()
         {
             _webcamThumbnail.Location = new Point(Math.Max(4, Width - _webcamThumbnail.Width - 10), 8);
+        }
+
+        private static string FormatDisplayName(string value)
+        {
+            string text = value.Trim();
+            if (text.Length <= 26)
+            {
+                return text;
+            }
+
+            string[] parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2)
+            {
+                return text.Length <= 52 ? text : text[..52];
+            }
+
+            int splitIndex = -1;
+            int seen = 0;
+            int target = text.Length / 2;
+            int bestDistance = int.MaxValue;
+            for (int i = 0; i < parts.Length - 1; i++)
+            {
+                seen += parts[i].Length;
+                int distance = Math.Abs(seen - target);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    splitIndex = seen;
+                }
+
+                seen++;
+            }
+
+            if (splitIndex <= 0 || splitIndex >= text.Length - 1)
+            {
+                return text;
+            }
+
+            return $"{text[..splitIndex].Trim()}{Environment.NewLine}{text[splitIndex..].Trim()}";
         }
 
         protected override void OnPaint(PaintEventArgs e)

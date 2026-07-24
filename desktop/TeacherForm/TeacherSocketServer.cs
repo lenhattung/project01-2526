@@ -6,7 +6,7 @@ namespace TeacherForm;
 
 internal sealed class TeacherSocketServer : ITeacherSessionTransport
 {
-    private const int MaxLiveImagePayloadBytes = 2 * 1024 * 1024;
+    private const int MaxLiveImagePayloadBytes = 4 * 1024 * 1024;
     private const int MaxFileChunkBytes = 2 * 1024 * 1024;
 
     private readonly Func<PolicySnapshot> _policyFactory;

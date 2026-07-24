@@ -492,7 +492,7 @@ class ExamSessionsController extends BaseApiController
     private function resolveWebcamIntervalMs(ExamSession $session): int
     {
         if (!empty($session->webcam_interval_ms)) {
-            return (int)$session->webcam_interval_ms;
+            return min(10000, max(250, (int)$session->webcam_interval_ms));
         }
 
         if ((int)$session->webcam_interval_seconds <= 0) {

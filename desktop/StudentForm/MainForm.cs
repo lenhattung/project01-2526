@@ -1148,10 +1148,10 @@ public sealed class MainForm : Form
 
     private void ApplyPolicyRuntime()
     {
-        _screenTimer.Interval = Math.Clamp(_policy.ScreenIntervalMs, 120, 10000);
+        _screenTimer.Interval = Math.Clamp(_policy.ScreenIntervalMs, 250, 10000);
         _webcamTimer.Interval = _policy.WebcamIntervalMs <= 0
-            ? 50
-            : Math.Clamp(_policy.WebcamIntervalMs, 40, 10000);
+            ? 500
+            : Math.Clamp(_policy.WebcamIntervalMs, 250, 10000);
 
         if (_client?.IsConnected == true && _policy.WebcamEnabled)
         {

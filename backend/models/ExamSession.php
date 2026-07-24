@@ -33,7 +33,7 @@ class ExamSession extends ActiveRecord
             [['screen_jpeg_quality'], 'default', 'value' => 40],
             [['screen_jpeg_quality'], 'integer', 'min' => 20, 'max' => 85],
             [['webcam_interval_ms'], 'default', 'value' => 500],
-            [['webcam_interval_ms'], 'integer', 'min' => 0, 'max' => 10000],
+            [['webcam_interval_ms'], 'integer', 'min' => 250, 'max' => 10000],
             [['webcam_interval_seconds'], 'default', 'value' => 0],
             [['webcam_interval_seconds'], 'integer', 'min' => 0, 'max' => 3600],
             [['webcam_jpeg_quality'], 'default', 'value' => 55],

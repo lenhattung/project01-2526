@@ -1,13 +1,25 @@
-namespace StudentForm;
+namespace TeacherForm;
 
 internal static class AppRuntime
 {
     private const string DefaultBackendBaseUrl = "http://127.0.0.1:8081";
 
     public static string BackendBaseUrl =>
-        Environment.GetEnvironmentVariable("EXAMGUARD_BACKEND_URL")
-        ?? ReadOptionalFile("student-backend-url.txt")
+        Environment.GetEnvironmentVariable("EXAMGUARD_TEACHER_BACKEND_URL")
+        ?? Environment.GetEnvironmentVariable("EXAMGUARD_BACKEND_URL")
+        ?? ReadOptionalFile("teacher-backend-url.txt")
+        ?? ReadOptionalFile("backend-url.txt")
         ?? DefaultBackendBaseUrl;
+
+    public static string RelayHost =>
+        Environment.GetEnvironmentVariable("EXAMGUARD_RELAY_HOST")
+        ?? ReadOptionalFile("teacher-relay-host.txt")
+        ?? "";
+
+    public static string RelaySecret =>
+        Environment.GetEnvironmentVariable("EXAMGUARD_RELAY_SECRET")
+        ?? ReadOptionalFile("teacher-relay-secret.txt")
+        ?? "";
 
     private static string? ReadOptionalFile(string fileName)
     {
